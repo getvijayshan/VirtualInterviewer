@@ -130,7 +130,9 @@ Open question / to revisit: whether `resume_parsed_json` needs its own versioned
 
 ## 8. Visual Identity
 
-Three directions were mocked up and reviewed as an interactive prototype (`design/Candidate-True-Companion-Prototype.html`, theme picker built in): **Signal** (dark/indigo/violet, Space Grotesk + Inter), **Momentum** (warm cream/coral/gold, Bricolage Grotesque + Manrope), **Clearance** (crisp graphite/mint/lime, Archivo + IBM Plex). Token values for all three are in `frontend/theme/tokens.css`, structured as CSS custom properties per brand so switching the shipped theme is a config change, not a rewrite. No direction is finalized yet — team is reviewing the prototype to pick one.
+Three directions were mocked up and reviewed as an interactive prototype (`design/Candidate-True-Companion-Prototype.html`, theme picker built in): Signal (dark/indigo/violet, Space Grotesk + Inter), **Momentum** (warm cream/coral/gold, Bricolage Grotesque + Manrope), Clearance (crisp graphite/mint/lime, Archivo + IBM Plex).
+
+**Decision (2026-09-01): Momentum** — warm, coach-like, energetic; matches the "energetic but serious" brief for a Gen Z/Millennial audience better than the more clinical/tech-forward Signal or Clearance. Set via `ACTIVE_BRAND` in `frontend/app/layout.tsx`. Token values for all three remain in `frontend/theme/tokens.css` — kept live (not deleted) in case of a future pivot, but Momentum is what ships.
 
 ## 9. Repository & Branching
 
