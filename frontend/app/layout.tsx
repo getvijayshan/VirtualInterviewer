@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   description: "Resume in, one realistic interview, useful feedback out.",
 };
 
-// Shipped theme direction is not finalized (see docs/Architecture-Decisions.md §8).
+// Visual direction locked 2026-09-01 (see docs/Architecture-Decisions.md §8).
 // Change this single value to switch the whole app's visual identity.
-const ACTIVE_BRAND = "signal";
+const ACTIVE_BRAND = "momentum";
 
 export default function RootLayout({
   children,
