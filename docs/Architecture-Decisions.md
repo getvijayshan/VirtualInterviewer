@@ -1,0 +1,137 @@
+# Candidate True Companion — Architecture & Design Decisions (Phase 1)
+
+Living document. Source of truth for technical decisions made in planning discussions, ahead of any code being written. Pairs with `Candidate True Campanion.MD` (product vision) and `Feature-List-Phase1.md` (testable feature breakdown).
+
+## 1. Phase 1 Scope
+
+Smallest end-to-end slice of the product: resume upload → JD/role/topic input → single audio-answer interview → basic scorecard report. Chosen because it proves the whole "upload → interview → feedback" loop without committing to a virtual avatar, payments, or corporate mode up front. Everything else in the product vision layers on top without rework.
+
+**Revised 2026-08-31/09-01**: interview answers are audio (candidate speaks, we transcribe), not typed text — see §4a. Target-role input also gained a third path, **Topic** (e.g. Data Structures, Algorithms, System Design, AI/ML), alongside JD-paste and role-pick, for candidates practicing a subject rather than a specific job.
+
+Explicitly deferred: virtual avatar/video, corporate/B2B mode, screen-share + gesture/cognitive analysis, prep calendar, expert-led rounds, payments/top-up, live coding execution sandbox, company-specific prep, multi-tier packages, multiple interview modes (Grilling/Followup/Deepdive/Cry-for-help — Phase 1 ships one adaptive mode only).
+
+## 2. Stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Frontend | Next.js (React) | Fast to build forms/chat UI; clear upgrade path to add voice later |
+| Backend | Python + FastAPI | LLM-heavy logic; Python's ecosystem is friendlier for resume parsing/NLP than Node |
+| DB | Postgres | Candidates, sessions, transcripts, reports — relational fits the data shape |
+| File storage | S3-compatible bucket | Raw resume files |
+| LLM provider | Anthropic Claude API | See §4 |
+| Speech-to-text | Whisper (initial) → Azure AI Foundry speech services (planned migration) | See §4a |
+| LLM observability | Helicone (self-hosted, pinned to latest tagged stable release) | Per-session cost/usage tracking; see §5 |
+| Hosting | Vercel (frontend) + Render/Fly.io (backend) | Cheap, fast to stand up, no infra babysitting for MVP |
+
+Deliberately monolith-simple — no microservices, no message queue/worker infra (Celery/SQS) for Phase 1. Add only when parsing or report-generation latency becomes an actual bottleneck.
+
+## 3. High-Level Flow
+
+```
+Resume upload → S3 → Parser (Claude, structured extraction) → Candidate profile in Postgres
+Candidate confirms/edits profile → JD/role saved to session
+Interview: backend orchestrates a stateful loop — sends system prompt (resume+JD+rules)
+  + running transcript to Claude each turn → next question → streamed to frontend
+  → all Q&A turns logged to Postgres as the transcript
+OTP auth gate → full transcript sent to Claude (report-generation system prompt)
+  → scorecard generated → stored → rendered
+```
+
+Key principle: **backend orchestrates the LLM, not the frontend.** Keeps prompts/API keys server-side, centralizes transcript logging, and lets interview logic change without a frontend deploy.
+
+Session state lives in **Postgres, not in-memory** — a 30-minute interview must be resumable after a refresh/drop (FL-05.7). Duration/turn cap is enforced **server-side**, independent of what the model does (FL-05.5) — the model cannot be trusted alone to end a session on time.
+
+## 4. Prompt Design
+
+**System prompt** (frozen per session, cached):
+- Interviewer persona/rules (one question at a time, adapt difficulty, don't reveal answers)
+- Resume summary + JD/target role
+- Output format instructions
+
+**User/assistant turns**: standard multi-turn — each candidate answer as `user`, each generated question as `assistant`. Follow-up behavior is not a separate mechanism; it's the model reading the last answer in context. Explicit mode switches (if ever needed) go through a `system`-role message appended mid-conversation (Claude Opus 5 / Fable 5 support this without invalidating the cached prefix) rather than editing the top-level system prompt.
+
+**Report generation** is a *separate* call at the end, over the full transcript, with a different ("strict grader") system prompt — not per-turn scoring.
+
+**Model choice**: Claude Sonnet for the live interview loop (cost/latency balance); reserve Opus for final report generation only (the one expensive call per session).
+
+## 4a. Speech-to-Text (audio answers)
+
+**Decision (2026-09-01)**: candidate answers are recorded as audio in the browser and transcribed server-side before being appended to the transcript as a `user` turn — the LLM only ever sees text.
+
+- **Initial provider: Whisper** (self-hosted or OpenAI API — implementation detail to confirm at build time). Chosen to unblock Phase 1 build immediately without waiting on an enterprise cloud contract.
+- **Planned migration: Azure AI Foundry speech services.** Once available, swap the transcription call behind a single internal interface (e.g. `transcribe(audio_bytes) -> str`) so the migration is a provider-swap, not a rework of the interview loop.
+- Track transcription latency and cost the same way as LLM calls — tag with `session_id` in Helicone (or log alongside it) so per-session cost includes STT, not just Claude usage.
+- Recording UX: tap-to-record / tap-to-stop (not push-to-talk), waveform + elapsed-time feedback while recording, "Transcribing…" state before the answer appears in the transcript. See `design/` prototype for the reference interaction.
+
+## 5. Usage Tracking & Cost Control
+
+- All Claude API calls proxied through **Helicone**, self-hosted (Docker), **pinned to the latest tagged stable release** — not `latest`/`main` — so upgrades are deliberate. (Helicone is Apache-2.0 OSS; as of this writing the company is in maintenance mode post-Mintlify acquisition — repo still active, self-hosting has no dependency risk, but re-evaluate Langfuse if development activity stalls further.)
+- Every call tagged with `session_id` + call-type (`question_gen` / `report_gen`) via Helicone custom properties → per-session cost is queryable without building our own dashboard first.
+- Prompt caching on the system prompt (resume+JD+rules) is the primary cost lever for multi-turn sessions — verify via `cache_read_input_tokens > 0` from turn 2 onward.
+- 30-min free trial: don't pre-shrink it. Build usage tracking first, run real sessions, decide the SKU size from actual $/session data — trial abuse (repeat sign-ups) is a bigger cost risk than raw model spend, so rate-limit by device/email/OTP too.
+
+## 6. Database Schema (proposed, Phase 1)
+
+```
+candidates
+  id (pk)
+  name
+  email
+  phone
+  resume_file_url
+  resume_parsed_json      -- structured extraction: skills, experience, education, projects
+  created_at
+
+sessions
+  id (pk)
+  candidate_id (fk -> candidates)
+  target_type              -- 'jd' | 'role' | 'topic'
+  jd_text                  -- set when target_type = 'jd'
+  target_role               -- set when target_type = 'role'
+  target_topic              -- set when target_type = 'topic' (e.g. 'data_structures', 'algorithms', 'system_design', 'ai_ml')
+  duration_min              -- fixed 30 in Phase 1
+  status                    -- pending | in_progress | completed | abandoned
+  consent_at
+  started_at
+  ended_at
+
+transcript_turns
+  id (pk)
+  session_id (fk -> sessions)
+  turn_index               -- ordering
+  role                     -- 'assistant' (question) | 'user' (answer)
+  content                  -- transcribed text for user turns
+  audio_file_url            -- nullable; raw answer audio in S3, kept for STT-quality debugging/reprocessing
+  transcription_provider    -- 'whisper' | 'azure_foundry' (nullable for assistant turns)
+  created_at
+
+reports
+  id (pk)
+  session_id (fk -> sessions, unique)
+  scorecard_json            -- structured per-question scores
+  feedback_text             -- communication/articulation notes
+  generated_at
+
+-- Usage is primarily tracked in Helicone (external), not duplicated in Postgres for Phase 1.
+-- Revisit adding a local usage_logs table only if we need usage data joined into
+-- in-app product queries (e.g. "candidates who used >$X") beyond what Helicone's
+-- dashboard/API can answer directly.
+```
+
+Open question / to revisit: whether `resume_parsed_json` needs its own versioned table if candidates re-upload resumes across multiple sessions later (out of scope while B2C is single-session-per-candidate in Phase 1).
+
+## 7. Decisions Explicitly Deferred
+
+- Virtual avatar/video delivery, and TTS (spoken questions) — audio is candidate → system only in Phase 1; questions are still delivered as text
+- Payment/billing integration for top-ups and paid tiers
+- Corporate/B2B data model (separate from candidate-facing schema above)
+- Coding-question execution sandbox
+- Multi-agent or Managed Agents usage — Phase 1 uses direct Messages API calls only; no orchestration framework needed at this scale
+
+## 8. Visual Identity
+
+Three directions were mocked up and reviewed as an interactive prototype (`design/Candidate-True-Companion-Prototype.html`, theme picker built in): **Signal** (dark/indigo/violet, Space Grotesk + Inter), **Momentum** (warm cream/coral/gold, Bricolage Grotesque + Manrope), **Clearance** (crisp graphite/mint/lime, Archivo + IBM Plex). Token values for all three are in `frontend/theme/tokens.css`, structured as CSS custom properties per brand so switching the shipped theme is a config change, not a rewrite. No direction is finalized yet — team is reviewing the prototype to pick one.
+
+## 9. Repository & Branching
+
+Repo: `https://github.com/getvijayshan/VirtualInterviewer`. **Git-flow** branching: `main` (release-only, always deployable), `develop` (integration branch), `feature/*` branched from and merged back into `develop`, `release/*` and `hotfix/*` as needed off `main`/`develop` per standard git-flow.

@@ -1,0 +1,136 @@
+Refferal Model-
+Preparation Plan (with multiple topics of different)
+Time and Cost (30 min) $2-4
+
+
+Phase 1 — MVP: Individual Mode, Core Interview Loop
+
+Goal: Prove the core loop — resume in, one realistic interview, useful feedback out — before touching avatars, corporate mode, or paid tiers.
+
+Scope
+
+1. Resume Intake
+- Upload PDF/DOCX resume
+- Parse and extract: name, contact, skills, experience, projects, education
+- Confirmation screen — candidate can edit/correct extracted fields before proceeding
+
+2. Target Role Input
+- Paste a Job Description, OR
+- Select designation/target role from a list (fallback if no JD)
+
+3. Interview Setup
+- Consent screen (data usage, recording if applicable)
+- Duration selection: 30 min default (fixed for Phase 1 — skip top-up billing)
+- Single interview mode only (drop Grilling/Followup/Deepdive/Cry-for-help variants for now — one adaptive mode)
+
+4. The Interview
+- Audio-based only (voice question, voice/typed answer) — no virtual avatar/video yet
+- Question mix: theory + scenario-based + project-experience-based (defer live coding execution — that needs a code editor/runner, bigger lift)
+- Questions adapt based on resume experience level and JD/role, not scripted per-candidate
+
+5. Auth
+- Mobile OTP signup only, gated right before showing results (as spec'd)
+
+6. Results/Report (Basic tier only)
+- Per-question: correctness/quality assessment, suggested better answer
+- Overall communication/articulation notes
+- Simple scorecard — no benchmarking, no gesture/cognitive analysis, no PDF export yet
+
+Explicitly out of scope for Phase 1 -
+
+Corporate mode, avatar/video, screen-share + gesture analysis, prep calendar, expert-led rounds, top-up/payments, coding-execution sandbox, company-specific prep, multi-round packages (Basic/Advance/Premium tiers).
+
+Why - 
+The smallest version that delivers the full "upload → interview → feedback" promise end to end, and every advanced feature in the spec layers on top of it without rework.
+
+Recommendations-
+
+1. Voice vs. text for v1 → Text-chat first, voice in a fast-follow
+Text lets you validate the question-generation/scoring loop without STT/TTS latency, accuracy, and cost variables in the mix. It's also trivial to demo and debug. 
+Voice is core to the product's eventual value ("communication skills" feedback needs actual speech), so don't cut it — just sequence it as Phase 1.5 once the interview logic itself is proven.
+
+2. Stack → Web app, simple and boring on purpose
+- Frontend: React (Next.js) — fast to build forms/chat UI, easy path to add voice later
+- Backend: Node/TypeScript or Python (FastAPI) — Python if you want easier resume-parsing/NLP libraries, Node if you want one language end-to-end. Given LLM-heavy logic, I'd lean Python/FastAPI.
+- DB: Postgres (candidates, sessions, transcripts, scores)
+- File storage: S3-compatible bucket for resumes
+- Hosting: Vercel (frontend) + Render/Fly.io (backend) — cheap, fast to stand up, no infra babysitting for an MVP
+
+3. LLM provider → Claude via the Anthropic API
+Good fit here: strong at structured extraction (resume parsing), long-context JD+resume+transcript reasoning for adaptive questioning, and nuanced qualitative scoring (articulation/communication feedback isn't a simple rubric match). Use Claude Sonnet for the interactive interview loop (cost/latency balance) and reserve Opus, if needed, for the final in-depth report generation.
+
+Proposed Architecture (Phase 1)
+
+┌─────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│  Next.js UI │◄────►│  FastAPI Backend │◄────►│   Postgres DB    │
+│ (chat-based │      │  (REST/WS API)   │      │ candidates,      │
+│  interview) │      │                  │      │ sessions,        │
+└─────────────┘      └──────┬───────────┘      │ transcripts,     │
+                             │                  │ reports          │
+                    ┌────────┼────────┐         └─────────────────┘
+                    ▼        ▼        ▼
+             ┌──────────┐ ┌──────┐ ┌──────────────┐
+             │ Resume    │ │  S3  │ │  Claude API   │
+             │ Parser    │ │ (raw │ │  (extraction, │
+             │ (service) │ │ files)│ │  Q-gen,       │
+             └──────────┘ └──────┘ │  scoring)      │
+                                    └──────────────┘
+
+Flow:
+1. Resume upload → stored in S3 → parser service (calls Claude for structured extraction) → writes candidate profile to Postgres
+2. Candidate confirms/edits profile → JD/role saved to session
+3. Interview session: backend orchestrates a stateful loop — sends resume+JD+conversation-so-far to Claude each turn, gets next question, streams to frontend over WebSocket (needed once you add voice; fine to start with plain HTTP polling for text-only v1)
+4. All Q&A turns logged to Postgres as the transcript
+5. On completion → OTP auth gate → backend sends full transcript to Claude for report generation → scorecard stored and rendered
+
+Key architectural choices and why:
+- Backend orchestrates the LLM, not the frontend — keeps prompts/API keys server-side, lets you swap/tune the interview logic without shipping fronchanges, and centralizes transcript logging.
+- Session state lives in Postgres, not in-memory — a 30-min interview can be interrupted (refresh, drop); you want resumability from day one, it's to add now vs. retrofit.
+- Resume parsing as its own service call (not inline in the interview endpoint) — it's async, can be slow/retried independently, and you'll likely swap/tune this piece a lot early on.
+- No queue/worker infra yet (no Celery/SQS) — Phase 1 volume doesn't need it; add when report-generation or parsing becomes a bottleneck.
+
+This is deliberately monolith-simple: one backend service, one DB, direct LLM calls — nothing that requires devops overhead. Splitting into microservices
+(interview engine, report engine, etc.) would be premature here.
+
+
+System prompt vs. user prompt for the interview loop
+
+System prompt — set once per session, stays frozen (for caching), holds everything that doesn't change turn-to-turn:
+- Interviewer persona/tone, rules ("ask one question at a time," "don't reveal answers," "adapt difficulty to resume experience")
+- The candidate's resume summary + JD/role (put this in the system prompt if it doesn't change during the interview — better cache hit rate than repeating it every turn)
+- Output format instructions (e.g., "always respond with just the next question, no preamble")
+
+User turn — the running conversation: each candidate answer gets appended as a user message, each generated question as an assistant message. This is just standard multi-turn — you resend the full transcript each call (the API is stateless), and prompt caching makes that cheap after the first request since the system+early turns stay a stable prefix.
+
+Follow-ups aren't a separate mechanism — they're the model naturally reading the last answer in context and deciding whether to probe deeper or move to a new topic. If you want explicit follow-up modes (Grilling / Deepdive / etc. from your spec), control that via a short instruction injected into the system prompt or as a system-role message appended mid-conversation (Claude Opus 5/Fable 5 support this — lets you switch mode without invalidating the cached prefix).
+
+system: "You are conducting a technical interview for [role] with [candidate name].
+Resume summary: [...]. JD: [...].
+Ask one question at a time. Mix theory, coding, and scenario questions based on experience level.
+After each answer, decide whether to follow up on it or move te which you're doing."
+
+messages: [
+  {assistant: "Tell me about a challenging bug you fixed recently."},
+  {user: "<candidate's answer>"},
+  ...
+]
+
+At the end, send the full transcript in one more call with a dare a strict interview grader...") to generate the report —don't try to score turn-by-turn.
+
+Controlling and tracking usage
+
+1. Model choice: use Claude Sonnet for the live interview loop (cost/latency balance), reserve Opus for the final report generation only — that's the
+expensive, once-per-session call.
+2. Cap max_tokens per turn — interview questions/follow-ups are short; don't leave it uncapped (e.g. 500–800 tokens per turn is plenty).
+3. Prompt caching — put the resume/JD/instructions in the syst so every turn after the first only pays full price for the new answer + new question, not the whole growing transcript. This is your single biggest cost lever in a multi-turn interview.
+4. Track usage per session: every response has a usage object  cache_read_input_tokens, cache_creation_input_tokens). Sumthese per session in your DB (a session_usage table or column), multiply by model pricing, and you have real cost-per-interview.
+5. Enforce the time/turn cap server-side, not just via prompt op the loop at 30 min or N turns regardless of what the modeldoes, so a runaway conversation can't blow past the trial budget.
+6. Token-count preflight (optional): call count_tokens on the  absurdly long resumes don't blow up your first-turn cost.
+
+Sizing the 30-min free trial SKU, A 30-min voice/text interview is roughly 15–25 question/answer
+
+- First turn: full system prompt (resume+JD, maybe 1–2K tokens) + question generation (~500 tokens out) ≈ full price once                                 
+- Each subsequent turn: cached system/history (~0.1× cost) + n0–1000 tokens)
+- Final report: one larger call (~2–4K tokens in, ~1–2K out) on Opus                                                                                      
+Rough estimate on Sonnet ($3/$15 per MTok) for a 20-turn session: well under $0.50 in model cost even before caching savings; caching typically cuts that 30–50% further. That's cheap enough that free-trial abuse (cost risk than the model spend itself — so also rate-limit trials by device/email/OTP, not just by session duration.                                                                                  
+Plan: don't shrink the trial pre-emptively — build the usage tracking first (step 4 above), run it for real, and look at actual $/session and decide the sku later.

@@ -1,0 +1,23 @@
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Candidate True Companion",
+  description: "Resume in, one realistic interview, useful feedback out.",
+};
+
+// Shipped theme direction is not finalized (see docs/Architecture-Decisions.md §8).
+// Change this single value to switch the whole app's visual identity.
+const ACTIVE_BRAND = "signal";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" data-brand={ACTIVE_BRAND}>
+      <body>{children}</body>
+    </html>
+  );
+}

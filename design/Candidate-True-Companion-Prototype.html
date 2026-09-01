@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Candidate True Companion — Prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+
+<style>
+  :root {
+    --chrome-bg: #F3F1EC;
+    --chrome-bg-alt: #E9E6DE;
+    --chrome-ink: #201E1B;
+    --chrome-ink-soft: #6B665D;
+    --chrome-hairline: #DAD5C9;
+    --chrome-rail-bg: #FFFFFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --chrome-bg: #131417;
+      --chrome-bg-alt: #1A1B1F;
+      --chrome-ink: #ECEAE6;
+      --chrome-ink-soft: #96938C;
+      --chrome-hairline: #2C2D32;
+      --chrome-rail-bg: #1A1B1F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --chrome-bg: #131417;
+    --chrome-bg-alt: #1A1B1F;
+    --chrome-ink: #ECEAE6;
+    --chrome-ink-soft: #96938C;
+    --chrome-hairline: #2C2D32;
+    --chrome-rail-bg: #1A1B1F;
+  }
+
+  /* ---- Brand token sets — swapped live via [data-brand] on #app ---- */
+  #app[data-brand="signal"] {
+    --bg: #14151A; --surface: #1B1C24; --surface-alt: #22232D; --border: #2B2C34;
+    --text: #F2F1F5; --text-soft: #A29DB0; --text-faint: #6B6878;
+    --primary: #6C5CE7; --accent: #A79BFF; --teal: #00D9A3; --alert: #FF6B4A;
+    --cta-bg: linear-gradient(135deg, #6C5CE7, #8B6CFF); --cta-text: #fff;
+    --icon-bg: linear-gradient(135deg, #6C5CE7, #A79BFF);
+    --alert-bg: linear-gradient(135deg, #FF6B4A, #FF8A6B);
+    --bezel: #0b0c10;
+    --mono: 'Space Mono', ui-monospace, monospace;
+    --sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --disp: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  }
+  #app[data-brand="momentum"] {
+    --bg: #FFF8EF; --surface: #FFFFFF; --surface-alt: #FCEFDC; --border: #ECE0CC;
+    --text: #12213D; --text-soft: #5C6B85; --text-faint: #93A0B8;
+    --primary: #FF7A4D; --accent: #B8722E; --teal: #2FBF9F; --alert: #D64545;
+    --cta-bg: linear-gradient(135deg, #FF7A4D, #FF9466); --cta-text: #fff;
+    --icon-bg: linear-gradient(135deg, #FF7A4D, #FFC24B);
+    --alert-bg: linear-gradient(135deg, #D64545, #E8685E);
+    --bezel: #17181c;
+    --mono: 'Space Mono', ui-monospace, monospace;
+    --sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    --disp: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  }
+  #app[data-brand="clearance"] {
+    --bg: #FAFCFB; --surface: #FFFFFF; --surface-alt: #EFF3F1; --border: #E1E6E3;
+    --text: #1C2321; --text-soft: #5B645F; --text-faint: #8B948F;
+    --primary: #0FA37F; --accent: #0C7E63; --teal: #0FA37F; --alert: #2A6BFF;
+    --cta-bg: #1C2321; --cta-text: #C6F135;
+    --icon-bg: linear-gradient(135deg, #0FA37F, #C6F135);
+    --alert-bg: linear-gradient(135deg, #2A6BFF, #5C8CFF);
+    --bezel: #17181c;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --disp: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--chrome-bg);
+    color: var(--chrome-ink);
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  .page { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  header.top {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 24px;
+    flex-wrap: wrap; margin-bottom: 36px;
+  }
+  header.top .copy { max-width: 640px; }
+  header.top .eyebrow {
+    font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--chrome-ink-soft); margin: 0 0 8px;
+  }
+  header.top h1 {
+    font-family: var(--disp, 'Space Grotesk'); font-weight: 700; font-size: clamp(24px, 3.4vw, 32px);
+    margin: 0 0 10px; text-wrap: balance; color: var(--chrome-ink);
+  }
+  header.top p.sub { color: var(--chrome-ink-soft); font-size: 15px; margin: 0; max-width: 62ch; }
+
+  .theme-picker {
+    background: var(--chrome-rail-bg); border: 1px solid var(--chrome-hairline);
+    border-radius: 14px; padding: 12px; flex-shrink: 0; min-width: 220px;
+  }
+  .theme-picker .tp-label {
+    font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--chrome-ink-soft); margin: 0 0 8px;
+  }
+  .theme-picker .tp-options { display: flex; flex-direction: column; gap: 6px; }
+  .theme-btn {
+    display: flex; align-items: center; gap: 10px; text-align: left;
+    border: 1px solid var(--chrome-hairline); background: var(--chrome-bg-alt);
+    border-radius: 10px; padding: 8px 10px; cursor: pointer; font-family: 'Inter', sans-serif;
+  }
+  .theme-btn .swatch { width: 18px; height: 18px; border-radius: 6px; flex-shrink: 0; }
+  .theme-btn .tb-name { font-size: 12.5px; font-weight: 600; color: var(--chrome-ink); }
+  .theme-btn .tb-tag { font-size: 10.5px; color: var(--chrome-ink-soft); display: block; }
+  .theme-btn.on { border-color: var(--chrome-ink); background: var(--chrome-rail-bg); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  .layout { display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: start; }
+
+  .rail {
+    background: var(--chrome-rail-bg); border: 1px solid var(--chrome-hairline); border-radius: 16px;
+    padding: 10px; position: sticky; top: 24px;
+  }
+  .rail button {
+    width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+    background: none; border: none; font-family: 'Inter', sans-serif; font-size: 13.5px;
+    color: var(--chrome-ink-soft); padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  }
+  .rail button .num { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--chrome-ink-soft); width: 18px; }
+  .rail button:hover { background: var(--chrome-bg-alt); }
+  .rail button.active { background: var(--primary); color: #fff; }
+  .rail button.active .num { color: #fff; }
+
+  .rail-progress { display: flex; gap: 4px; padding: 10px 12px 4px; }
+  .rail-progress span { flex: 1; height: 3px; border-radius: 2px; background: var(--chrome-hairline); }
+  .rail-progress span.done { background: var(--primary); }
+
+  .stage { display: flex; justify-content: center; padding: 20px 0; }
+  .device {
+    width: 380px; background: var(--bg); border-radius: 36px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 30px 60px -20px rgba(0,0,0,0.45), 0 0 0 8px var(--bezel);
+    overflow: hidden; color: var(--text); font-family: var(--sans);
+    transition: background 0.25s ease, color 0.25s ease;
+  }
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 22px 4px; font-family: var(--mono); font-size: 11px; color: var(--text-soft);
+  }
+  .statusbar .dots { display: flex; gap: 3px; }
+  .statusbar .dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--text-soft); }
+
+  .screen {
+    display: none; padding: 6px 22px 26px; min-height: 660px;
+    flex-direction: column; animation: rise 0.28s ease;
+  }
+  .screen.active { display: flex; }
+  @media (prefers-reduced-motion: reduce) { .screen, .bubble { animation: none !important; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+  .backrow { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; min-height: 22px; }
+  .backrow button {
+    background: none; border: none; color: var(--text-soft); font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 4px; padding: 0;
+  }
+  .backrow button:hover { color: var(--text); }
+
+  .step-tag {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--accent); margin: 10px 0 6px;
+  }
+  .screen h2 { font-family: var(--disp); font-size: 22px; font-weight: 700; margin: 0 0 6px; text-wrap: balance; }
+  .screen .sub { font-size: 13px; color: var(--text-soft); margin: 0 0 20px; }
+
+  .spacer { flex: 1; }
+
+  .btn {
+    font-family: var(--sans); font-size: 14px; font-weight: 700; border: none;
+    border-radius: 12px; padding: 13px 18px; cursor: pointer; width: 100%;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary { background: var(--cta-bg); color: var(--cta-text); }
+  .btn-primary[disabled] { background: var(--border); color: var(--text-faint); cursor: not-allowed; opacity: 0.7; }
+  .btn-ghost { background: transparent; color: var(--text-soft); border: 1px solid var(--border); }
+
+  /* Upload */
+  .dropzone {
+    border: 1.5px dashed var(--primary); background: var(--surface); border-radius: 16px;
+    padding: 22px; text-align: center; margin-bottom: 16px; cursor: pointer; transition: background 0.15s ease;
+  }
+  .dropzone:hover { background: var(--surface-alt); }
+  .dropzone .icon {
+    width: 36px; height: 36px; margin: 0 auto 10px; border-radius: 10px;
+    background: var(--icon-bg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dropzone p { margin: 0; font-size: 13.5px; color: var(--text-soft); }
+  .dropzone p.hint { font-family: var(--mono); font-size: 10.5px; margin-top: 6px; color: var(--text-faint); }
+
+  .file-chip {
+    display: none; align-items: center; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
+    margin-bottom: 20px; animation: pop 0.25s ease;
+  }
+  .file-chip.show { display: flex; }
+  .file-chip .ext { font-family: var(--mono); font-size: 10px; font-weight: 700; background: var(--primary); color: #fff; padding: 3px 6px; border-radius: 6px; }
+  .file-chip .meta { flex: 1; }
+  .file-chip .meta .name { font-size: 13px; font-weight: 500; }
+  .file-chip .meta .size { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); }
+  .file-chip .check { color: var(--teal); font-size: 16px; }
+
+  .privacy-note { font-size: 11.5px; color: var(--text-faint); margin: 12px 0 0; }
+
+  /* Confirm */
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block; font-family: var(--mono); font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 5px;
+  }
+  .field .value {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; font-size: 13.5px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .field .value .pencil { color: var(--text-faint); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; font-weight: 500; animation: pop 0.2s ease; }
+  .chip.add { color: var(--accent); border-style: dashed; border-color: var(--primary); cursor: pointer; background: none; }
+  .chip.add:hover { background: var(--surface); }
+  .exp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .exp-card .role { font-size: 13.5px; font-weight: 600; }
+  .exp-card .org { font-size: 12px; color: var(--text-soft); }
+  .exp-card .dates { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); margin-top: 4px; }
+
+  /* Role */
+  .segmented { display: flex; background: var(--surface); border-radius: 10px; padding: 3px; margin-bottom: 16px; }
+  .segmented button {
+    flex: 1; border: none; background: none; padding: 8px; border-radius: 8px;
+    font-family: var(--sans); font-size: 12.5px; font-weight: 600; color: var(--text-soft); cursor: pointer;
+  }
+  .segmented button.on { background: var(--primary); color: #fff; }
+  .jd-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; font-size: 12.5px; line-height: 1.6; color: var(--text-soft);
+    height: 300px; overflow-y: auto;
+  }
+  .jd-box strong { color: var(--text); }
+  .role-list { display: none; flex-direction: column; gap: 8px; height: 300px; overflow-y: auto; }
+  .role-list.show { display: flex; }
+  .role-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; font-size: 13px; cursor: pointer;
+  }
+  .role-item.on { border-color: var(--primary); background: var(--surface-alt); }
+  .role-item .lvl { font-family: var(--mono); font-size: 10px; color: var(--text-faint); margin-top: 3px; }
+  .topic-list { display: none; flex-direction: column; gap: 8px; height: 300px; overflow-y: auto; }
+  .topic-list.show { display: flex; }
+  .topic-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  }
+  .topic-item.on { border-color: var(--primary); background: var(--surface-alt); }
+  .topic-item .glyph {
+    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    background: var(--icon-bg);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 11px; font-weight: 700; color: #fff;
+  }
+  .topic-item .name { font-weight: 500; }
+  .topic-item .desc { font-family: var(--mono); font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+
+  /* Consent */
+  .consent-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; display: flex; gap: 10px; margin-bottom: 16px; cursor: pointer;
+  }
+  .consent-box input { margin-top: 2px; accent-color: var(--primary); }
+  .consent-box p { margin: 0; font-size: 12.5px; color: var(--text-soft); line-height: 1.5; }
+  .consent-box p a { color: var(--accent); }
+  .duration-pill {
+    display: flex; align-items: center; justify-content: space-between; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 16px;
+  }
+  .duration-pill .label { font-size: 13px; color: var(--text-soft); }
+  .duration-pill .val { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--text); }
+  .duration-pill .val small { font-size: 11px; color: var(--text-faint); font-weight: 500; }
+  .duration-pill .fixed-tag { font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); display: block; margin-top: 2px; }
+
+  /* Interview */
+  .chat-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .timer { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .timer .ring { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 20%, transparent); }
+  .q-count { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+
+  .chat { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-bottom: 12px; max-height: 430px; }
+  .bubble { border-radius: 14px; padding: 11px 13px; font-size: 13px; line-height: 1.5; max-width: 88%; animation: pop 0.25s ease; }
+  .bubble.q { background: var(--surface); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .bubble.a { background: var(--cta-bg); color: var(--cta-text); align-self: flex-end; border-bottom-right-radius: 4px; }
+  .bubble.typing { display: flex; gap: 4px; align-items: center; padding: 13px; }
+  .bubble.typing span { width: 5px; height: 5px; border-radius: 50%; background: var(--text-faint); animation: blink 1.1s infinite ease-in-out; }
+  .bubble.typing span:nth-child(2) { animation-delay: 0.15s; }
+  .bubble.typing span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+
+  .mic-panel {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    margin-top: 12px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px 14px;
+  }
+  .waveform {
+    display: flex; align-items: center; justify-content: center; gap: 3px; height: 28px; width: 100%;
+  }
+  .waveform span {
+    width: 3px; border-radius: 2px; background: var(--accent); height: 6px; opacity: 0.35;
+    transition: height 0.15s ease, opacity 0.15s ease;
+  }
+  .mic-panel.recording .waveform span { opacity: 1; animation: wave 0.9s ease-in-out infinite; background: var(--alert); }
+  .waveform span:nth-child(1) { animation-delay: 0s; }
+  .waveform span:nth-child(2) { animation-delay: 0.1s; }
+  .waveform span:nth-child(3) { animation-delay: 0.2s; }
+  .waveform span:nth-child(4) { animation-delay: 0.3s; }
+  .waveform span:nth-child(5) { animation-delay: 0.4s; }
+  .waveform span:nth-child(6) { animation-delay: 0.3s; }
+  .waveform span:nth-child(7) { animation-delay: 0.2s; }
+  .waveform span:nth-child(8) { animation-delay: 0.1s; }
+  .waveform span:nth-child(9) { animation-delay: 0s; }
+  @keyframes wave { 0%, 100% { height: 6px; } 50% { height: 26px; } }
+  @media (prefers-reduced-motion: reduce) { .mic-panel.recording .waveform span { animation: none; height: 18px; } }
+
+  .mic-btn {
+    width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--cta-bg); color: var(--cta-text);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+  .mic-btn:active { transform: scale(0.96); }
+  .mic-panel.recording .mic-btn {
+    background: var(--alert-bg); color: #fff;
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--alert) 18%, transparent);
+  }
+  .mic-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em; color: var(--text-faint);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .mic-panel.recording .mic-label { color: var(--alert); }
+  .mic-label .rec-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--alert); display: none;
+  }
+  .mic-panel.recording .mic-label .rec-dot { display: inline-block; animation: blink 1s infinite; }
+  .end-link { text-align: center; margin-top: 10px; }
+  .end-link button { background: none; border: none; color: var(--text-faint); font-size: 11.5px; cursor: pointer; text-decoration: underline; }
+
+  /* Report */
+  .score-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; text-align: center; margin-bottom: 18px; }
+  .score-hero .num { font-family: var(--mono); font-size: 40px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .score-hero .num small { font-size: 16px; color: var(--text-faint); }
+  .score-hero .label { color: var(--text-soft); font-size: 12px; margin-top: 6px; }
+
+  .report-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; cursor: pointer; }
+  .report-item .q { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; margin-bottom: 6px;
+  }
+  .tag.strong { background: color-mix(in srgb, var(--teal) 14%, transparent); color: var(--teal); }
+  .tag.work { background: color-mix(in srgb, var(--alert) 12%, transparent); color: var(--alert); }
+  .report-item .suggestion { font-size: 12px; color: var(--text-soft); line-height: 1.5; display: none; }
+  .report-item.open .suggestion { display: block; }
+  .report-item .toggle-hint { font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); }
+
+  .legend {
+    max-width: 720px; margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--chrome-hairline);
+    color: var(--chrome-ink-soft); font-size: 13.5px;
+  }
+  .legend strong { color: var(--chrome-ink); }
+
+  @media (max-width: 760px) {
+    header.top { flex-direction: column; }
+    .theme-picker { width: 100%; }
+    .layout { grid-template-columns: 1fr; }
+    .rail { position: static; display: flex; overflow-x: auto; gap: 4px; }
+    .rail button { flex-shrink: 0; width: auto; }
+    .rail-progress { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app" data-brand="signal">
+<div class="page">
+  <header class="top">
+    <div class="copy">
+      <p class="eyebrow">Candidate True Companion — team review</p>
+      <h1>Pick the direction, then walk the flow.</h1>
+      <p class="sub">Same six screens, same interactions — only the visual identity changes. Switch themes on the right, then click through upload → confirm → role → consent → interview → scorecard.</p>
+    </div>
+    <div class="theme-picker">
+      <p class="tp-label">Theme</p>
+      <div class="tp-options" id="themePicker">
+        <button class="theme-btn on" data-brand="signal">
+          <span class="swatch" style="background:linear-gradient(135deg,#6C5CE7,#14151A);"></span>
+          <span><span class="tb-name">Signal</span><span class="tb-tag">Dark · confident · tech-forward</span></span>
+        </button>
+        <button class="theme-btn" data-brand="momentum">
+          <span class="swatch" style="background:linear-gradient(135deg,#FF7A4D,#FFF8EF);"></span>
+          <span><span class="tb-name">Momentum</span><span class="tb-tag">Warm · coach-like · energetic</span></span>
+        </button>
+        <button class="theme-btn" data-brand="clearance">
+          <span class="swatch" style="background:linear-gradient(135deg,#0FA37F,#FAFCFB);"></span>
+          <span><span class="tb-name">Clearance</span><span class="tb-tag">Crisp · precise · clinical-fresh</span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="rail" id="rail">
+      <div class="rail-progress" id="railProgress"></div>
+      <button class="active" data-screen="upload"><span class="num">01</span>Upload resume</button>
+      <button data-screen="confirm"><span class="num">02</span>Confirm details</button>
+      <button data-screen="role"><span class="num">03</span>Target role</button>
+      <button data-screen="consent"><span class="num">04</span>Consent & setup</button>
+      <button data-screen="interview"><span class="num">05</span>Interview</button>
+      <button data-screen="report"><span class="num">06</span>Scorecard</button>
+    </nav>
+
+    <div class="stage">
+      <div class="device">
+        <div class="statusbar">
+          <span>9:41</span>
+          <div class="dots"><span></span><span></span><span></span></div>
+        </div>
+
+        <!-- 01 UPLOAD -->
+        <div class="screen active" data-screen="upload">
+          <div class="backrow"></div>
+          <p class="step-tag">Step 1 of 6</p>
+          <h2>Upload your resume</h2>
+          <p class="sub">We'll pull out your skills, experience, and projects automatically.</p>
+
+          <div class="dropzone" id="dropzone">
+            <div class="icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 16V4M12 4l-5 5M12 4l5 5"/><path d="M4 18v2h16v-2"/></svg>
+            </div>
+            <p id="dropzoneText">Drag &amp; drop, or tap to browse</p>
+            <p class="hint">PDF OR DOCX · UP TO 5MB</p>
+          </div>
+
+          <div class="file-chip" id="fileChip">
+            <span class="ext">PDF</span>
+            <div class="meta">
+              <div class="name">vijay_shan_resume.pdf</div>
+              <div class="size">238 KB · uploaded</div>
+            </div>
+            <span class="check">✓</span>
+          </div>
+
+          <p class="privacy-note">Your resume is used only to tailor this session. You can delete it anytime from account settings.</p>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" id="uploadContinue" disabled>Continue</button>
+        </div>
+
+        <!-- 02 CONFIRM -->
+        <div class="screen" data-screen="confirm">
+          <div class="backrow"><button data-back="upload">← Back</button></div>
+          <p class="step-tag">Step 2 of 6</p>
+          <h2>Confirm your details</h2>
+          <p class="sub">Everything here came from your resume — fix anything we got wrong.</p>
+
+          <div class="field">
+            <label>Name</label>
+            <div class="value"><span>Vijay Shan</span><span class="pencil">✎</span></div>
+          </div>
+          <div class="field">
+            <label>Skills</label>
+            <div class="chips" id="skillChips">
+              <span class="chip">Python</span><span class="chip">FastAPI</span><span class="chip">Postgres</span><span class="chip">React</span>
+              <span class="chip add" id="addSkill">+ Add</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Experience</label>
+            <div class="exp-card">
+              <div class="role">Backend Engineer</div>
+              <div class="org">Northwind Labs</div>
+              <div class="dates">2023 — Present</div>
+            </div>
+            <div class="exp-card">
+              <div class="role">Software Intern</div>
+              <div class="org">Fieldstone Analytics</div>
+              <div class="dates">2022 — 2023</div>
+            </div>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" data-next="role">Looks good, continue</button>
+        </div>
+
+        <!-- 03 ROLE -->
+        <div class="screen" data-screen="role">
+          <div class="backrow"><button data-back="confirm">← Back</button></div>
+          <p class="step-tag">Step 3 of 6</p>
+          <h2>What do you want to be interviewed on?</h2>
+          <p class="sub">Paste a JD, pick a role, or drill into one topic.</p>
+
+          <div class="segmented">
+            <button class="on" id="tabJD">Paste JD</button>
+            <button id="tabRole">Pick a role</button>
+            <button id="tabTopic">Topic</button>
+          </div>
+
+          <div class="jd-box" id="jdBox">
+            <strong>Backend Engineer — Payments Team</strong><br/><br/>
+            We're looking for a backend engineer to help scale our payments infrastructure. You'll work closely with the platform team on...<br/><br/>
+            <strong>Requirements</strong><br/>
+            · 2+ years with Python or Go<br/>
+            · Experience with relational databases at scale<br/>
+            · Comfortable owning a service end-to-end
+          </div>
+          <div class="role-list" id="roleList">
+            <div class="role-item on"><div>Backend Engineer</div><div class="lvl">Mid level</div></div>
+            <div class="role-item"><div>Frontend Engineer</div><div class="lvl">Mid level</div></div>
+            <div class="role-item"><div>Data Analyst</div><div class="lvl">Entry level</div></div>
+            <div class="role-item"><div>Product Manager</div><div class="lvl">Senior level</div></div>
+          </div>
+          <div class="topic-list" id="topicList">
+            <div class="topic-item on"><span class="glyph">DS</span><div><div class="name">Data Structures</div><div class="desc">ARRAYS · TREES · GRAPHS · HEAPS</div></div></div>
+            <div class="topic-item"><span class="glyph">AL</span><div><div class="name">Algorithms</div><div class="desc">SORTING · RECURSION · DP · GREEDY</div></div></div>
+            <div class="topic-item"><span class="glyph">SD</span><div><div class="name">System Design</div><div class="desc">SCALING · TRADE-OFFS · ARCHITECTURE</div></div></div>
+            <div class="topic-item"><span class="glyph">AI</span><div><div class="name">AI / Machine Learning</div><div class="desc">MODELS · TRAINING · LLM FUNDAMENTALS</div></div></div>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" data-next="consent">Continue</button>
+        </div>
+
+        <!-- 04 CONSENT -->
+        <div class="screen" data-screen="consent">
+          <div class="backrow"><button data-back="role">← Back</button></div>
+          <p class="step-tag">Step 4 of 6</p>
+          <h2>Before we begin</h2>
+          <p class="sub">Quick check, then we'll start your session.</p>
+
+          <div class="consent-box" id="consentBox">
+            <input type="checkbox" id="consentCheck">
+            <p>I agree to have my resume and interview responses used to generate my feedback report. <a href="#" onclick="return false;">Privacy details</a>.</p>
+          </div>
+
+          <div class="duration-pill">
+            <div>
+              <div class="label">Session length</div>
+              <span class="fixed-tag">FIXED FOR NOW</span>
+            </div>
+            <div class="val">30:00 <small>min</small></div>
+          </div>
+
+          <div class="spacer"></div>
+          <button class="btn btn-primary" id="startInterview" disabled>Start interview</button>
+        </div>
+
+        <!-- 05 INTERVIEW -->
+        <div class="screen" data-screen="interview" style="padding-bottom:16px;">
+          <div class="chat-top">
+            <div class="timer"><span class="ring"></span><span id="timerVal">18:24</span> left</div>
+            <span class="q-count" id="qCount">Q1 of ~18</span>
+          </div>
+          <div class="chat" id="chat">
+            <div class="bubble q">Tell me about a time you had to debug a production issue under time pressure.</div>
+          </div>
+          <div class="mic-panel" id="micPanel">
+            <div class="waveform" id="waveform">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <button class="mic-btn" id="micBtn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+            </button>
+            <div class="mic-label" id="micLabel"><span class="rec-dot"></span><span id="micLabelText">Tap to answer</span></div>
+          </div>
+          <div class="end-link"><button data-next="report">End session early →</button></div>
+        </div>
+
+        <!-- 06 REPORT -->
+        <div class="screen" data-screen="report">
+          <div class="backrow"></div>
+          <p class="step-tag">Step 6 of 6</p>
+          <h2>Your scorecard</h2>
+          <p class="sub">Based on your full 30-minute session.</p>
+
+          <div class="score-hero">
+            <div class="num">7.8<small>/10</small></div>
+            <div class="label">Overall performance</div>
+          </div>
+
+          <div class="report-item" data-toggle>
+            <span class="tag strong">Strong</span>
+            <div class="q">"Tell me about a challenging bug you fixed recently."</div>
+            <div class="suggestion">Clear structure and a concrete outcome. Naming the actual root cause (idempotency key collision) early would make it land even faster.</div>
+            <div class="toggle-hint">tap to expand</div>
+          </div>
+          <div class="report-item" data-toggle>
+            <span class="tag work">Needs work</span>
+            <div class="q">"How would you scale this service to 10x traffic?"</div>
+            <div class="suggestion">Answer stayed high-level. Next time, name one concrete bottleneck (DB connections, queue throughput) and how you'd measure it first.</div>
+            <div class="toggle-hint">tap to expand</div>
+          </div>
+          <div class="report-item" data-toggle>
+            <span class="tag strong">Communication</span>
+            <div class="suggestion">Pacing was confident throughout. A couple of answers ran long — practice landing the point in the first two sentences.</div>
+            <div class="toggle-hint">tap to expand</div>
+          </div>
+
+          <div class="spacer"></div>
+          <button class="btn btn-primary">Download report</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <p class="legend" id="legend"><strong>How to read this:</strong> this is a click-through prototype, not the final visual polish pass — spacing, copy, and the exact chat/report layout will keep evolving once real resume-parsing and scoring data are wired in. Use the theme picker above to compare directions before we lock one in.</p>
+</div>
+</div>
+
+<script>
+  // Theme switcher
+  const app = document.getElementById('app');
+  const themeButtons = document.querySelectorAll('.theme-btn');
+  themeButtons.forEach(b => {
+    b.addEventListener('click', () => {
+      app.dataset.brand = b.dataset.brand;
+      themeButtons.forEach(x => x.classList.toggle('on', x === b));
+    });
+  });
+
+  // Screen navigation
+  const buttons = document.querySelectorAll('#rail button[data-screen]');
+  const screens = document.querySelectorAll('.screen[data-screen]');
+  const order = ['upload','confirm','role','consent','interview','report'];
+  const progressWrap = document.getElementById('railProgress');
+  order.forEach(() => progressWrap.appendChild(document.createElement('span')));
+
+  function render(name) {
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.screen === name));
+    screens.forEach(s => s.classList.toggle('active', s.dataset.screen === name));
+    const idx = order.indexOf(name);
+    [...progressWrap.children].forEach((s, i) => s.classList.toggle('done', i <= idx));
+  }
+  buttons.forEach(b => b.addEventListener('click', () => render(b.dataset.screen)));
+  document.querySelectorAll('[data-next]').forEach(b => b.addEventListener('click', () => render(b.dataset.next)));
+  document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => render(b.dataset.back)));
+
+  // Upload
+  const dropzone = document.getElementById('dropzone');
+  const fileChip = document.getElementById('fileChip');
+  const dropzoneText = document.getElementById('dropzoneText');
+  const uploadContinue = document.getElementById('uploadContinue');
+  dropzone.addEventListener('click', () => {
+    fileChip.classList.add('show');
+    dropzoneText.textContent = 'Replace file';
+    uploadContinue.disabled = false;
+  });
+  uploadContinue.addEventListener('click', () => { if (!uploadContinue.disabled) render('confirm'); });
+
+  // Confirm — add skill
+  const extraSkills = ['Docker', 'AWS', 'Redis', 'GraphQL'];
+  let skillIdx = 0;
+  document.getElementById('addSkill').addEventListener('click', function () {
+    if (skillIdx >= extraSkills.length) return;
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.textContent = extraSkills[skillIdx++];
+    this.parentElement.insertBefore(chip, this);
+    if (skillIdx >= extraSkills.length) this.style.display = 'none';
+  });
+
+  // Role / JD / Topic tabs
+  const tabJD = document.getElementById('tabJD');
+  const tabRole = document.getElementById('tabRole');
+  const tabTopic = document.getElementById('tabTopic');
+  const jdBox = document.getElementById('jdBox');
+  const roleList = document.getElementById('roleList');
+  const topicList = document.getElementById('topicList');
+  const tabs = [
+    { btn: tabJD, panel: jdBox },
+    { btn: tabRole, panel: roleList },
+    { btn: tabTopic, panel: topicList },
+  ];
+  function selectTab(active) {
+    tabs.forEach(t => {
+      const isActive = t === active;
+      t.btn.classList.toggle('on', isActive);
+      if (t.panel === jdBox) jdBox.style.display = isActive ? 'block' : 'none';
+      else t.panel.classList.toggle('show', isActive);
+    });
+  }
+  tabJD.addEventListener('click', () => selectTab(tabs[0]));
+  tabRole.addEventListener('click', () => selectTab(tabs[1]));
+  tabTopic.addEventListener('click', () => selectTab(tabs[2]));
+  document.querySelectorAll('.role-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.role-item').forEach(i => i.classList.remove('on'));
+      item.classList.add('on');
+    });
+  });
+  document.querySelectorAll('.topic-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.topic-item').forEach(i => i.classList.remove('on'));
+      item.classList.add('on');
+    });
+  });
+
+  // Consent
+  const consentCheck = document.getElementById('consentCheck');
+  const consentBox = document.getElementById('consentBox');
+  const startInterview = document.getElementById('startInterview');
+  function syncConsent() { startInterview.disabled = !consentCheck.checked; }
+  consentCheck.addEventListener('change', syncConsent);
+  consentBox.addEventListener('click', (e) => {
+    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'A') {
+      consentCheck.checked = !consentCheck.checked;
+      syncConsent();
+    }
+  });
+  startInterview.addEventListener('click', () => { if (!startInterview.disabled) render('interview'); });
+
+  // Interview simulation — audio answers
+  const chat = document.getElementById('chat');
+  const qCount = document.getElementById('qCount');
+  const micPanel = document.getElementById('micPanel');
+  const micBtn = document.getElementById('micBtn');
+  const micLabelText = document.getElementById('micLabelText');
+  const followUps = [
+    "Good — what would you change about that approach in hindsight?",
+    "How would you scale that same service to 10x the traffic?",
+    "What's one thing you'd tell a teammate hitting this for the first time?",
+    "Walk me through how you'd test that fix before shipping it."
+  ];
+  const answerSamples = [
+    "We had a payments service silently dropping webhook retries — turned out to be an idempotency key collision under load. I traced it through the queue logs, patched the key generation, and shipped a hotfix in about 40 minutes.",
+    "I'd include the payment provider's event ID instead of deriving the key ourselves — removes the collision risk entirely.",
+    "I'd shard the queue by merchant ID first, since that's where our current load is uneven, then look at connection pooling on the DB.",
+    "I'd pair with them on the actual incident replay so it's not abstract — walking the logs together sticks better than a doc."
+  ];
+  let qNum = 1;
+  let answerIdx = 0;
+  let recording = false;
+  let recordTimer = null;
+  function addBubble(text, cls) {
+    const b = document.createElement('div');
+    b.className = 'bubble ' + cls;
+    b.textContent = text;
+    chat.appendChild(b);
+    chat.scrollTop = chat.scrollHeight;
+    return b;
+  }
+  function startRecording() {
+    recording = true;
+    micPanel.classList.add('recording');
+    let secs = 0;
+    micLabelText.textContent = '0:00';
+    recordTimer = setInterval(() => {
+      secs++;
+      const m = Math.floor(secs / 60), s = secs % 60;
+      micLabelText.textContent = m + ':' + String(s).padStart(2, '0');
+    }, 1000);
+  }
+  function stopRecording() {
+    recording = false;
+    clearInterval(recordTimer);
+    micPanel.classList.remove('recording');
+    micLabelText.textContent = 'Transcribing…';
+    micBtn.disabled = true;
+    setTimeout(() => {
+      const answer = answerSamples[answerIdx % answerSamples.length];
+      answerIdx++;
+      addBubble(answer, 'a');
+      const typing = document.createElement('div');
+      typing.className = 'bubble q typing';
+      typing.innerHTML = '<span></span><span></span><span></span>';
+      chat.appendChild(typing);
+      chat.scrollTop = chat.scrollHeight;
+      setTimeout(() => {
+        typing.remove();
+        qNum++;
+        qCount.textContent = 'Q' + qNum + ' of ~18';
+        addBubble(followUps[(qNum - 2) % followUps.length], 'q');
+        micBtn.disabled = false;
+        micLabelText.textContent = 'Tap to answer';
+      }, 900);
+    }, 700);
+  }
+  micBtn.addEventListener('click', () => {
+    if (micBtn.disabled) return;
+    if (!recording) startRecording(); else stopRecording();
+  });
+
+  // Report expand/collapse
+  document.querySelectorAll('.report-item[data-toggle]').forEach(item => {
+    item.addEventListener('click', () => item.classList.toggle('open'));
+  });
+
+  render('upload');
+</script>
+</body>
+</html>

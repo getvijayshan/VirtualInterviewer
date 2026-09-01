@@ -1,0 +1,77 @@
+/*
+  Candidate True Companion — brand theme tokens.
+  Three directions are kept live side by side (see docs/Architecture-Decisions.md §8);
+  the shipped theme is chosen by setting data-brand on the app root, e.g.:
+
+    <html data-brand="signal">   or   document.documentElement.dataset.brand = "signal"
+
+  No direction is finalized yet. Do not hardcode any of these hex values or font
+  names in component code — always reference the CSS custom property so a theme
+  change is a one-line edit here, not a codebase-wide find/replace.
+*/
+
+[data-brand="signal"] {
+  --bg: #14151A;
+  --surface: #1B1C24;
+  --surface-alt: #22232D;
+  --border: #2B2C34;
+  --text: #F2F1F5;
+  --text-soft: #A29DB0;
+  --text-faint: #6B6878;
+  --primary: #6C5CE7;
+  --accent: #A79BFF;
+  --teal: #00D9A3;
+  --alert: #FF6B4A;
+  --cta-bg: linear-gradient(135deg, #6C5CE7, #8B6CFF);
+  --cta-text: #fff;
+  --icon-bg: linear-gradient(135deg, #6C5CE7, #A79BFF);
+  --alert-bg: linear-gradient(135deg, #FF6B4A, #FF8A6B);
+  --bezel: #0b0c10;
+  --font-mono: 'Space Mono', ui-monospace, monospace;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
+[data-brand="momentum"] {
+  --bg: #FFF8EF;
+  --surface: #FFFFFF;
+  --surface-alt: #FCEFDC;
+  --border: #ECE0CC;
+  --text: #12213D;
+  --text-soft: #5C6B85;
+  --text-faint: #93A0B8;
+  --primary: #FF7A4D;
+  --accent: #B8722E;
+  --teal: #2FBF9F;
+  --alert: #D64545;
+  --cta-bg: linear-gradient(135deg, #FF7A4D, #FF9466);
+  --cta-text: #fff;
+  --icon-bg: linear-gradient(135deg, #FF7A4D, #FFC24B);
+  --alert-bg: linear-gradient(135deg, #D64545, #E8685E);
+  --bezel: #17181c;
+  --font-mono: 'Space Mono', ui-monospace, monospace;
+  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+}
+
+[data-brand="clearance"] {
+  --bg: #FAFCFB;
+  --surface: #FFFFFF;
+  --surface-alt: #EFF3F1;
+  --border: #E1E6E3;
+  --text: #1C2321;
+  --text-soft: #5B645F;
+  --text-faint: #8B948F;
+  --primary: #0FA37F;
+  --accent: #0C7E63;
+  --teal: #0FA37F;
+  --alert: #2A6BFF;
+  --cta-bg: #1C2321;
+  --cta-text: #C6F135;
+  --icon-bg: linear-gradient(135deg, #0FA37F, #C6F135);
+  --alert-bg: linear-gradient(135deg, #2A6BFF, #5C8CFF);
+  --bezel: #17181c;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+}
