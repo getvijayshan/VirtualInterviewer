@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Candidate
-from app.schemas.resume import CandidateResponse, ResumeUploadResponse
+from app.schemas.resume import CandidateResponse, ResumeFieldsUpdate, ResumeUploadResponse
 from app.services import llm, storage
 from app.services.resume_parser import (
     FileTooLargeError,
@@ -80,7 +80,25 @@ async def get_resume(resume_id: uuid.UUID, db: Session = Depends(get_db)):
     return candidate
 
 
-@router.patch("/{resume_id}")
-async def update_resume(resume_id: uuid.UUID):
-    """FL-02: persist candidate corrections to extracted fields."""
-    raise NotImplementedError
+@router.patch("/{resume_id}", response_model=CandidateResponse)
+async def update_resume(
+    resume_id: uuid.UUID, fields: ResumeFieldsUpdate, db: Session = Depends(get_db)
+):
+    """FL-02: persist candidate corrections to extracted fields.
+
+    Pydantic validation on ResumeFieldsUpdate (name/email required, FL-02.4)
+    runs before this body executes — an invalid payload never reaches here,
+    FastAPI returns 422 with the field-level errors for inline display.
+    """
+    candidate = db.get(Candidate, resume_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    candidate.name = fields.name
+    candidate.email = fields.email
+    candidate.phone = fields.phone
+    candidate.resume_parsed_json = fields.model_dump(mode="json")
+
+    db.commit()
+    db.refresh(candidate)
+    return candidate

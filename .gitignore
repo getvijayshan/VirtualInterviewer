@@ -4,6 +4,7 @@ frontend/.next/
 frontend/out/
 frontend/.env
 frontend/.env.local
+frontend/*.tsbuildinfo
 
 # Backend
 backend/__pycache__/
