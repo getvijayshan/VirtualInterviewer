@@ -33,10 +33,20 @@ def _build_client(extra_headers: dict[str, str]) -> anthropic.Anthropic:
     return anthropic.Anthropic(**kwargs)
 
 
+def cacheable(text: str) -> list[dict]:
+    """Wrap text as a content block with an ephemeral cache breakpoint.
+
+    Use for the system prompt (and the last message of a growing multi-turn
+    conversation, see the interview loop) so prompt caching actually engages —
+    passing a plain string never gets cached, regardless of how stable it is.
+    """
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
+
 def create_message(
     *,
     model: str,
-    system: str,
+    system: str | list[dict],
     messages: list[dict],
     max_tokens: int,
     call_type: str,
