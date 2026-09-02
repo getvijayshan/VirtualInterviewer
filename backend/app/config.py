@@ -25,9 +25,10 @@ class Settings(BaseSettings):
     helicone_base_url: str = ""
     helicone_api_key: str = ""
 
-    # Speech-to-text — Whisper initially, Azure AI Foundry planned migration (see docs/Architecture-Decisions.md §4a)
-    stt_provider: str = "whisper"  # "whisper" | "azure_foundry"
-    whisper_model: str = "base"
+    # Speech-to-text — Deepgram initially, Azure AI Foundry planned migration (see docs/Architecture-Decisions.md §4a)
+    stt_provider: str = "deepgram"  # "deepgram" | "azure_foundry"
+    deepgram_api_key: str = ""
+    deepgram_model: str = "nova-2"
     azure_foundry_endpoint: str = ""
     azure_foundry_api_key: str = ""
 
