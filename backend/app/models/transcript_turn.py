@@ -15,7 +15,7 @@ class TurnRole(str, enum.Enum):
 
 
 class TranscriptionProvider(str, enum.Enum):
-    whisper = "whisper"
+    deepgram = "deepgram"
     azure_foundry = "azure_foundry"
 
 

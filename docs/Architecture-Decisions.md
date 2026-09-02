@@ -19,7 +19,7 @@ Explicitly deferred: virtual avatar/video, corporate/B2B mode, screen-share + ge
 | DB | Postgres | Candidates, sessions, transcripts, reports — relational fits the data shape |
 | File storage | S3-compatible bucket | Raw resume files |
 | LLM provider | Anthropic Claude API | See §4 |
-| Speech-to-text | Whisper (initial) → Azure AI Foundry speech services (planned migration) | See §4a |
+| Speech-to-text | Deepgram (initial) → Azure AI Foundry speech services (planned migration) | See §4a |
 | LLM observability | Helicone (self-hosted, pinned to latest tagged stable release) | Per-session cost/usage tracking; see §5 |
 | Hosting | Vercel (frontend) + Render/Fly.io (backend) | Cheap, fast to stand up, no infra babysitting for MVP |
 
@@ -58,7 +58,7 @@ Session state lives in **Postgres, not in-memory** — a 30-minute interview mus
 
 **Decision (2026-09-01)**: candidate answers are recorded as audio in the browser and transcribed server-side before being appended to the transcript as a `user` turn — the LLM only ever sees text.
 
-- **Initial provider: Whisper** (self-hosted or OpenAI API — implementation detail to confirm at build time). Chosen to unblock Phase 1 build immediately without waiting on an enterprise cloud contract.
+- **Initial provider: Deepgram** (revised 2026-09-02, was Whisper). Hosted API, no self-managed model/GPU infra, low-latency streaming-capable transcription — a better fit than self-hosting Whisper for a small team that isn't running its own inference infrastructure yet.
 - **Planned migration: Azure AI Foundry speech services.** Once available, swap the transcription call behind a single internal interface (e.g. `transcribe(audio_bytes) -> str`) so the migration is a provider-swap, not a rework of the interview loop.
 - Track transcription latency and cost the same way as LLM calls — tag with `session_id` in Helicone (or log alongside it) so per-session cost includes STT, not just Claude usage.
 - Recording UX: tap-to-record / tap-to-stop (not push-to-talk), waveform + elapsed-time feedback while recording, "Transcribing…" state before the answer appears in the transcript. See `design/` prototype for the reference interaction.
@@ -104,7 +104,7 @@ transcript_turns
   role                     -- 'assistant' (question) | 'user' (answer)
   content                  -- transcribed text for user turns
   audio_file_url            -- nullable; raw answer audio in S3, kept for STT-quality debugging/reprocessing
-  transcription_provider    -- 'whisper' | 'azure_foundry' (nullable for assistant turns)
+  transcription_provider    -- 'deepgram' | 'azure_foundry' (nullable for assistant turns)
   created_at
 
 reports
