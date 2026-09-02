@@ -1,0 +1,212 @@
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.sub {
+  color: var(--text-soft);
+  font-size: 14px;
+  margin: 0 0 28px;
+}
+
+.segmented {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 20px;
+}
+
+.segmented button {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 8px;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.segmented button.on {
+  background: var(--primary);
+  color: #fff;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 13.5px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  resize: vertical;
+}
+
+.optionList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.optionItem {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+  color: var(--text);
+}
+
+.optionItem.on {
+  border-color: var(--primary);
+  background: var(--surface-alt);
+}
+
+.optionDesc {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-top: 3px;
+}
+
+.errorText {
+  color: var(--alert);
+  font-size: 12px;
+  margin: -8px 0 20px;
+}
+
+.summaryCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.summaryLabel {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin: 0 0 6px;
+}
+
+.summaryText {
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.consentBox {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+
+.consentBox p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.consentBox input {
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+.durationPill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 24px;
+}
+
+.durationLabel {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.durationFixedTag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  display: block;
+  margin-top: 2px;
+}
+
+.durationValue {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.primaryButton {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  background: var(--cta-bg);
+  color: var(--cta-text);
+  cursor: pointer;
+}
+
+.primaryButton:disabled {
+  background: var(--border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.statusText {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.statusTextError {
+  text-align: center;
+  font-size: 13px;
+  color: var(--alert);
+  margin-bottom: 12px;
+}
