@@ -1,0 +1,103 @@
+.page {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 60px 24px 80px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.sub {
+  color: var(--text-soft);
+  font-size: 14px;
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 16px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--text);
+  text-align: center;
+}
+
+.input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.primaryButton {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  background: var(--cta-bg);
+  color: var(--cta-text);
+  cursor: pointer;
+}
+
+.primaryButton:disabled {
+  background: var(--border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.secondaryLink {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.secondaryLink button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.errorText {
+  color: var(--alert);
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 10px;
+}
+
+.statusText {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-soft);
+}
