@@ -138,6 +138,98 @@ def test_get_resume_returns_persisted_candidate(client, fake_db, monkeypatch):
     assert resp.json()["name"] == "Jane Candidate"
 
 
+def test_patch_returns_404_for_unknown_candidate(client, fake_db):
+    resp = client.patch(
+        f"/resumes/{uuid.uuid4()}",
+        json={"name": "Jane", "email": "jane@example.com"},
+    )
+    assert resp.status_code == 404
+
+
+def test_patch_updates_candidate_fields(client, fake_db, monkeypatch):
+    monkeypatch.setattr(storage, "upload_resume_file", lambda **kwargs: "https://fake-s3/resume.docx")
+    monkeypatch.setattr(
+        llm,
+        "extract_candidate_fields",
+        lambda text: {"name": "Wrong Name", "email": "", "skills": [], "experience": [], "education": [], "projects": []},
+    )
+    data = _docx_bytes("some resume text")
+    upload_resp = client.post(
+        "/resumes",
+        files={
+            "file": (
+                "resume.docx",
+                data,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    candidate_id = upload_resp.json()["candidate_id"]
+
+    patch_resp = client.patch(
+        f"/resumes/{candidate_id}",
+        json={
+            "name": "Jane Corrected",
+            "email": "jane@example.com",
+            "phone": "555-0100",
+            "skills": ["Python", "SQL"],
+            "experience": [{"company": "Acme", "role": "Engineer"}],
+            "education": [],
+            "projects": [],
+        },
+    )
+
+    assert patch_resp.status_code == 200
+    body = patch_resp.json()
+    assert body["name"] == "Jane Corrected"
+    assert body["email"] == "jane@example.com"
+    assert body["resume_parsed_json"]["skills"] == ["Python", "SQL"]
+
+
+def test_patch_rejects_missing_name(client, fake_db, monkeypatch):
+    monkeypatch.setattr(storage, "upload_resume_file", lambda **kwargs: "https://fake-s3/resume.docx")
+    monkeypatch.setattr(
+        llm, "extract_candidate_fields", lambda text: {"skills": [], "experience": [], "education": [], "projects": []}
+    )
+    data = _docx_bytes("some resume text")
+    upload_resp = client.post(
+        "/resumes",
+        files={
+            "file": (
+                "resume.docx",
+                data,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    candidate_id = upload_resp.json()["candidate_id"]
+
+    resp = client.patch(f"/resumes/{candidate_id}", json={"name": "   ", "email": "jane@example.com"})
+    assert resp.status_code == 422
+
+
+def test_patch_rejects_invalid_email(client, fake_db, monkeypatch):
+    monkeypatch.setattr(storage, "upload_resume_file", lambda **kwargs: "https://fake-s3/resume.docx")
+    monkeypatch.setattr(
+        llm, "extract_candidate_fields", lambda text: {"skills": [], "experience": [], "education": [], "projects": []}
+    )
+    data = _docx_bytes("some resume text")
+    upload_resp = client.post(
+        "/resumes",
+        files={
+            "file": (
+                "resume.docx",
+                data,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    candidate_id = upload_resp.json()["candidate_id"]
+
+    resp = client.patch(f"/resumes/{candidate_id}", json={"name": "Jane", "email": "not-an-email"})
+    assert resp.status_code == 422
+
+
 def test_upload_corrupt_file_routes_to_manual_entry_instead_of_crashing(client, fake_db, monkeypatch):
     monkeypatch.setattr(storage, "upload_resume_file", lambda **kwargs: "https://fake-s3/resume.pdf")
 
