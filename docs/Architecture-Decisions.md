@@ -52,6 +52,10 @@ Session state lives in **Postgres, not in-memory** — a 30-minute interview mus
 
 **Report generation** is a *separate* call at the end, over the full transcript, with a different ("strict grader") system prompt — not per-turn scoring.
 
+**Implemented (2026-09-02, #7)**: `POST /sessions/{id}/start` / `POST /sessions/{id}/turns` / `GET /sessions/{id}/transcript` / `POST /sessions/{id}/end` in `backend/app/routers/interview.py`. System prompt built by `app/services/interview_prompts.py` from the candidate's resume + session target (jd/role/topic) — deterministic per session (FL-09.1: no session_id/timestamp interpolated into the text itself, those only go in the Helicone headers). Both the system prompt **and the last message of the growing conversation** are wrapped with an `ephemeral` cache breakpoint (`llm.cacheable()`) each call — caching only the system block would leave the resent transcript uncached; marking the last message lets Anthropic reuse the previous call's cached prefix, which is what actually delivers the "only pay full price for the new turn" saving described above. Real `cache_read_input_tokens > 0` verification still needs a live Anthropic key — not done in this environment.
+
+The candidate's answer audio is transcribed via `app/services/transcription.py` before ever reaching Claude, then also uploaded to S3 (`transcript_turns.audio_file_url`) for STT-quality debugging. FL-05.5's hard stop is checked immediately after persisting the user's answer and before any further Claude call — time-based (`session.started_at + duration_min`), not turn-count-based. On a Claude failure mid-turn, the new user turn is rolled back (not committed) so the frontend can safely retry with the same recorded audio rather than leaving an orphaned answer with no follow-up question.
+
 **Model choice**: Claude Sonnet for the live interview loop (cost/latency balance); reserve Opus for final report generation only (the one expensive call per session).
 
 ## 4a. Speech-to-Text (audio answers)

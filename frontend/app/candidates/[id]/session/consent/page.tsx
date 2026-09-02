@@ -23,7 +23,6 @@ export default function ConsentPage() {
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     const loaded = loadDraft(candidateId);
@@ -58,7 +57,7 @@ export default function ConsentPage() {
       }
       const data = await res.json();
       clearDraft(candidateId);
-      setSessionId(data.id);
+      router.push(`/sessions/${data.id}/interview`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Could not start session.");
     } finally {
@@ -70,16 +69,6 @@ export default function ConsentPage() {
     return (
       <main className={styles.page}>
         <p className={styles.statusText}>Loading…</p>
-      </main>
-    );
-  }
-
-  if (sessionId) {
-    return (
-      <main className={styles.page}>
-        <p className={styles.eyebrow}>Step 4 of 6</p>
-        <h1 className={styles.title}>Session created.</h1>
-        <p className={styles.statusText}>The interview screen lands in a follow-up build. Session ID: {sessionId}</p>
       </main>
     );
   }

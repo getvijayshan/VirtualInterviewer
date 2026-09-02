@@ -207,3 +207,10 @@ def test_extract_candidate_fields_wraps_anthropic_api_error(monkeypatch):
 
     with pytest.raises(llm.ExtractionError):
         llm.extract_candidate_fields("some resume text")
+
+
+def test_cacheable_wraps_text_with_ephemeral_cache_control():
+    result = llm.cacheable("system prompt text")
+    assert result == [
+        {"type": "text", "text": "system prompt text", "cache_control": {"type": "ephemeral"}}
+    ]
