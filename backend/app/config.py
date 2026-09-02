@@ -15,10 +15,14 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
 
-    # LLM (Anthropic, routed through Helicone — see #6, not wired up yet)
+    # LLM (Anthropic, routed through self-hosted Helicone — see docs/Architecture-Decisions.md §5)
     anthropic_api_key: str = ""
     anthropic_model_extraction: str = "claude-sonnet-5"  # resume parsing, structured extraction
-    helicone_base_url: str = "https://oai.helicone.ai/v1"  # self-hosted gateway; override per deployment
+    anthropic_model_interview: str = "claude-sonnet-5"  # live interview loop, cost/latency balance (#7)
+    anthropic_model_report: str = "claude-opus-5"  # final report generation, once per session (#10)
+    # Self-hosted Helicone gateway URL for Anthropic traffic. Empty string = call
+    # Anthropic directly (e.g. local dev without a Helicone instance running).
+    helicone_base_url: str = ""
     helicone_api_key: str = ""
 
     # Speech-to-text — Whisper initially, Azure AI Foundry planned migration (see docs/Architecture-Decisions.md §4a)

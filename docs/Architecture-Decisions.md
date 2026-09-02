@@ -70,6 +70,8 @@ Session state lives in **Postgres, not in-memory** — a 30-minute interview mus
 - Prompt caching on the system prompt (resume+JD+rules) is the primary cost lever for multi-turn sessions — verify via `cache_read_input_tokens > 0` from turn 2 onward.
 - 30-min free trial: don't pre-shrink it. Build usage tracking first, run real sessions, decide the SKU size from actual $/session data — trial abuse (repeat sign-ups) is a bigger cost risk than raw model spend, so rate-limit by device/email/OTP too.
 
+**Implemented (2026-09-02)**: `backend/app/services/llm.py` is the single entry point for every Claude call — `create_message(model, system, messages, max_tokens, call_type, session_id=None, tools=None, tool_choice=None)`. It builds the Anthropic client pointed at `settings.helicone_base_url` (empty = call Anthropic directly, e.g. local dev with no Helicone instance running) and attaches `Helicone-Property-Call-Type` / `Helicone-Property-Session-Id` headers plus `Helicone-Auth`. `get_usage(response)` reads back `cache_read_input_tokens`/`cache_creation_input_tokens` alongside input/output tokens for later logging. #7 (interview loop) and #10 (report generation) should call `create_message` with `call_type="question_gen"` / `"report_gen"` respectively — resume extraction (#3) already does with `call_type="resume_extraction"`. Real prompt-cache verification (`cache_read_input_tokens > 0` from turn 2 onward) needs an actual multi-turn session, so it's deferred to #7.
+
 ## 6. Database Schema (proposed, Phase 1)
 
 ```
