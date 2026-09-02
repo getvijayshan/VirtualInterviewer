@@ -15,8 +15,9 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
 
-    # LLM (Anthropic, routed through Helicone)
+    # LLM (Anthropic, routed through Helicone — see #6, not wired up yet)
     anthropic_api_key: str = ""
+    anthropic_model_extraction: str = "claude-sonnet-5"  # resume parsing, structured extraction
     helicone_base_url: str = "https://oai.helicone.ai/v1"  # self-hosted gateway; override per deployment
     helicone_api_key: str = ""
 
