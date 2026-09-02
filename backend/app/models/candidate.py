@@ -17,6 +17,9 @@ class Candidate(Base):
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
     resume_file_url: Mapped[str | None] = mapped_column(String, nullable=True)
     resume_parsed_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # FL-06: set once the candidate verifies this phone number via OTP —
+    # gates report access (see app/routers/auth.py).
+    phone_verified_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     sessions: Mapped[list["InterviewSession"]] = relationship(back_populates="candidate")

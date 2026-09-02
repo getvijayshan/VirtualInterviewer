@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import styles from "./interview.module.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -32,6 +32,7 @@ function formatTime(totalSeconds: number): string {
 
 export default function InterviewPage() {
   const params = useParams<{ sessionId: string }>();
+  const router = useRouter();
   const sessionId = params.sessionId;
 
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,12 @@ export default function InterviewPage() {
   const [micError, setMicError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // FL-06.1: the auth prompt appears immediately after interview completion,
+  // before any report content.
+  useEffect(() => {
+    if (ended) router.push(`/sessions/${sessionId}/auth`);
+  }, [ended, router, sessionId]);
 
   // Initialize: resume an in-progress session, start a pending one, or show
   // the ended state — this is what makes a refresh/drop resumable (FL-05.7).
@@ -183,7 +190,7 @@ export default function InterviewPage() {
     return (
       <main className={styles.page}>
         <h1 className={styles.title}>Session complete.</h1>
-        <p className={styles.statusText}>Your scorecard is being built in a follow-up release.</p>
+        <p className={styles.statusText}>Verifying your identity before showing your results…</p>
       </main>
     );
   }

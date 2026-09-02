@@ -67,6 +67,12 @@ The candidate's answer audio is transcribed via `app/services/transcription.py` 
 - Track transcription latency and cost the same way as LLM calls — tag with `session_id` in Helicone (or log alongside it) so per-session cost includes STT, not just Claude usage.
 - Recording UX: tap-to-record / tap-to-stop (not push-to-talk), waveform + elapsed-time feedback while recording, "Transcribing…" state before the answer appears in the transcript. See `design/` prototype for the reference interaction.
 
+## 4b. Auth Gate (OTP)
+
+**Implemented (2026-09-02, #9)**: `POST /auth/otp/request` / `POST /auth/otp/verify` in `backend/app/routers/auth.py`. A 6-digit code (hashed with SHA-256 before storage, compared with `hmac.compare_digest`), 5-minute TTL, single-use, capped at 5 verify attempts per code — the most recently requested code is the only one that's valid, so requesting a new one silently invalidates the last (FL-06.2/.3). Success sets `candidates.phone_verified_at` (FL-06.4); the interview screen redirects here the moment a session ends, before any report content renders (FL-06.1).
+
+**Known gap**: no SMS provider is wired up yet — `app/services/otp.py`'s `send_otp()` just logs the code, and the request endpoint echoes it back as `debug_code` only when `APP_ENV=development`. Wiring a real provider (Twilio or similar) is real-credentials work, bundled with #14 rather than tracked separately.
+
 ## 5. Usage Tracking & Cost Control
 
 - All Claude API calls proxied through **Helicone**, self-hosted (Docker), **pinned to the latest tagged stable release** — not `latest`/`main` — so upgrades are deliberate. (Helicone is Apache-2.0 OSS; as of this writing the company is in maintenance mode post-Mintlify acquisition — repo still active, self-hosting has no dependency risk, but re-evaluate Langfuse if development activity stalls further.)
@@ -84,8 +90,19 @@ candidates
   name
   email
   phone
+  phone_verified_at        -- set on successful OTP verify (FL-06.4)
   resume_file_url
   resume_parsed_json      -- structured extraction: skills, experience, education, projects
+  created_at
+
+otp_codes
+  id (pk)
+  candidate_id (fk -> candidates)
+  phone                    -- number this code was sent to (may differ from candidates.phone if changed at the auth gate)
+  code_hash                -- SHA-256, never the raw code
+  expires_at
+  consumed_at
+  attempt_count
   created_at
 
 sessions
