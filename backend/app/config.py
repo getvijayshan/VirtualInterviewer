@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
 
     # Database
-    database_url: str = "postgresql://localhost:5432/candidate_true_companion"
+    database_url: str = "postgresql://candidate_true_companion:candidate_true_companion@localhost:5432/candidate_true_companion"
 
     # File storage
     s3_bucket: str = ""
