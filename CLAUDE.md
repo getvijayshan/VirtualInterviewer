@@ -18,7 +18,7 @@ design/            Shareable HTML prototypes (not shipped code)
 
 ## Stack
 
-Next.js frontend, Python/FastAPI backend, Postgres, S3-compatible file storage, Anthropic Claude API (Sonnet for the interview loop, Opus for report generation) routed through self-hosted Helicone for usage tracking, Deepgram for speech-to-text (planned migration to Azure AI Foundry — keep STT behind a single `transcribe()` interface so that swap stays a provider change, not a rework). Monolith-simple: no microservices, no queue infra until an actual bottleneck shows up.
+Next.js frontend, Python/FastAPI backend, Postgres (Dockerized on a self-managed VM, API running directly on the same VM — see ADR §10), S3-compatible file storage, **Azure OpenAI** (migration in progress from Anthropic Claude as of 2026-09-03 — see ADR §4c before touching `backend/app/services/llm.py`) routed through self-hosted Helicone for usage tracking, Deepgram for speech-to-text (planned migration to Azure AI Foundry — keep STT behind a single `transcribe()` interface so that swap stays a provider change, not a rework). Monolith-simple: no microservices, no queue infra until an actual bottleneck shows up.
 
 ## Conventions
 

@@ -14,6 +14,10 @@ backend/venv/
 backend/.env
 backend/*.egg-info/
 
+# Infra
+infra/.env
+infra/data/
+
 # General
 .DS_Store
 *.log
