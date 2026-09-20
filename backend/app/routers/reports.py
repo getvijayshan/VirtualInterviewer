@@ -1,7 +1,8 @@
+import json
 import uuid
 from datetime import datetime, timezone
 
-import anthropic
+import openai
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 
@@ -70,27 +71,27 @@ async def generate_report(session_id: uuid.UUID, db: DBSession = Depends(get_db)
     if not turns:
         raise HTTPException(status_code=422, detail="No transcript to grade.")
 
-    system_prompt = llm.cacheable(build_system_prompt(candidate, session))
+    system_prompt = build_system_prompt(candidate, session)
     transcript_text = build_transcript_text(turns)
 
     try:
         response = llm.create_message(
-            model=settings.anthropic_model_report,
+            model=settings.azure_openai_deployment_report,
             system=system_prompt,
             messages=[{"role": "user", "content": transcript_text}],
             max_tokens=2048,
             call_type="report_gen",
             session_id=str(session.id),
             tools=[REPORT_TOOL],
-            tool_choice={"type": "tool", "name": "record_interview_report"},
+            tool_choice={"type": "function", "function": {"name": "record_interview_report"}},
         )
-    except anthropic.APIError as exc:
+    except openai.OpenAIError as exc:
         raise HTTPException(status_code=502, detail=f"Could not generate report: {exc}") from exc
 
     data = None
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "record_interview_report":
-            data = block.input
+    for tool_call in response.choices[0].message.tool_calls or []:
+        if tool_call.function.name == "record_interview_report":
+            data = json.loads(tool_call.function.arguments)
             break
     if data is None:
         raise HTTPException(status_code=502, detail="Claude did not return a structured report.")

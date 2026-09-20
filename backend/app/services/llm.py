@@ -1,26 +1,38 @@
-"""Shared Anthropic client wrapper, routed through self-hosted Helicone.
+"""Shared Azure OpenAI client wrapper, routed through self-hosted Helicone.
 
-Per docs/Architecture-Decisions.md §5: every Claude call goes through this
-module rather than the Anthropic SDK directly, so usage tracking and the
+Per docs/Architecture-Decisions.md §4c/§5: every LLM call goes through this
+module rather than the openai SDK directly, so usage tracking and the
 Helicone gateway are configured in exactly one place. #7 (interview loop)
 and #10 (report generation) should call create_message() the same way
 extract_candidate_fields() below does.
 """
 
-import anthropic
+import json
+
+import openai
 
 from app.config import settings
 
 CALL_TYPE_HEADER = "Helicone-Property-Call-Type"
 SESSION_ID_HEADER = "Helicone-Property-Session-Id"
 
+# The openai SDK's AzureOpenAI client requires an api_version (it's not optional
+# in this SDK version) but it isn't something callers/ops should need to set per
+# environment — fixed here rather than exposed as an env var. Bump this constant
+# when moving to a newer Azure OpenAI API surface.
+AZURE_OPENAI_API_VERSION = "2024-10-21"
+
 
 class ExtractionError(Exception):
-    """Raised when Claude doesn't return a usable structured extraction (FL-01.5)."""
+    """Raised when the model doesn't return a usable structured extraction (FL-01.5)."""
 
 
-def _build_client(extra_headers: dict[str, str]) -> anthropic.Anthropic:
-    kwargs: dict = {"api_key": settings.anthropic_api_key}
+def _build_client(extra_headers: dict[str, str]) -> openai.AzureOpenAI:
+    kwargs: dict = {
+        "api_key": settings.azure_openai_api_key,
+        "azure_endpoint": settings.azure_openai_endpoint,
+        "api_version": AZURE_OPENAI_API_VERSION,
+    }
     if settings.helicone_base_url:
         kwargs["base_url"] = settings.helicone_base_url
 
@@ -30,35 +42,29 @@ def _build_client(extra_headers: dict[str, str]) -> anthropic.Anthropic:
     if headers:
         kwargs["default_headers"] = headers
 
-    return anthropic.Anthropic(**kwargs)
-
-
-def cacheable(text: str) -> list[dict]:
-    """Wrap text as a content block with an ephemeral cache breakpoint.
-
-    Use for the system prompt (and the last message of a growing multi-turn
-    conversation, see the interview loop) so prompt caching actually engages —
-    passing a plain string never gets cached, regardless of how stable it is.
-    """
-    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+    return openai.AzureOpenAI(**kwargs)
 
 
 def create_message(
     *,
     model: str,
-    system: str | list[dict],
+    system: str,
     messages: list[dict],
     max_tokens: int,
     call_type: str,
     session_id: str | None = None,
     tools: list[dict] | None = None,
     tool_choice: dict | None = None,
-) -> anthropic.types.Message:
-    """Single entry point for every Claude call in the app.
+) -> openai.types.chat.ChatCompletion:
+    """Single entry point for every LLM call in the app.
 
-    `call_type` (e.g. 'resume_extraction', 'question_gen', 'report_gen') and
-    `session_id` are sent as Helicone custom properties (FL-08.2) so
-    per-session cost is queryable in Helicone without a separate usage table.
+    `model` is the Azure deployment name (see settings.azure_openai_deployment_*),
+    not a published model id. `call_type` (e.g. 'resume_extraction', 'question_gen',
+    'report_gen') and `session_id` are sent as Helicone custom properties (FL-08.2)
+    so per-session cost is queryable in Helicone without a separate usage table.
+
+    Prompt caching is automatic on Azure OpenAI for prompts over ~1024 tokens —
+    no manual cache-breakpoint markup needed, unlike the prior Anthropic wrapper.
     """
     extra_headers = {CALL_TYPE_HEADER: call_type}
     if session_id:
@@ -67,8 +73,7 @@ def create_message(
     client = _build_client(extra_headers)
     kwargs: dict = {
         "model": model,
-        "system": system,
-        "messages": messages,
+        "messages": [{"role": "system", "content": system}, *messages],
         "max_tokens": max_tokens,
     }
     if tools:
@@ -76,72 +81,84 @@ def create_message(
     if tool_choice:
         kwargs["tool_choice"] = tool_choice
 
-    return client.messages.create(**kwargs)
+    return client.chat.completions.create(**kwargs)
 
 
-def get_usage(response: anthropic.types.Message) -> dict[str, int]:
-    """Token usage off a response, including prompt-cache fields (FL-09) —
+def get_usage(response: openai.types.chat.ChatCompletion) -> dict[str, int]:
+    """Token usage off a response, including the prompt-cache field (FL-09) —
     callers logging usage (once #7/#9 persist anything locally) should use
     this rather than reading response.usage directly, so the field set is
-    consistent everywhere."""
+    consistent everywhere.
+
+    Azure OpenAI/OpenAI caching is automatic and doesn't bill/report a
+    separate "cache creation" cost the way Anthropic did — that field is
+    always 0 here, kept only so callers don't need to branch on provider.
+    """
     usage = response.usage
+    cached_tokens = 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is not None:
+        cached_tokens = getattr(details, "cached_tokens", 0) or 0
     return {
-        "input_tokens": usage.input_tokens,
-        "output_tokens": usage.output_tokens,
-        "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
-        "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
+        "input_tokens": usage.prompt_tokens,
+        "output_tokens": usage.completion_tokens,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": cached_tokens,
     }
 
 
 _RESUME_FIELDS_TOOL = {
-    "name": "record_resume_fields",
-    "description": "Record structured fields extracted from a candidate's resume.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "name": {"type": "string"},
-            "email": {"type": "string"},
-            "phone": {"type": "string"},
-            "skills": {"type": "array", "items": {"type": "string"}},
-            "experience": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "company": {"type": "string"},
-                        "role": {"type": "string"},
-                        "start_date": {"type": "string"},
-                        "end_date": {"type": "string"},
-                        "summary": {"type": "string"},
+    "type": "function",
+    "function": {
+        "name": "record_resume_fields",
+        "description": "Record structured fields extracted from a candidate's resume.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "skills": {"type": "array", "items": {"type": "string"}},
+                "experience": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "company": {"type": "string"},
+                            "role": {"type": "string"},
+                            "start_date": {"type": "string"},
+                            "end_date": {"type": "string"},
+                            "summary": {"type": "string"},
+                        },
+                        "required": ["company", "role"],
                     },
-                    "required": ["company", "role"],
+                },
+                "education": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "institution": {"type": "string"},
+                            "degree": {"type": "string"},
+                            "year": {"type": "string"},
+                        },
+                        "required": ["institution"],
+                    },
+                },
+                "projects": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "summary": {"type": "string"},
+                        },
+                        "required": ["name"],
+                    },
                 },
             },
-            "education": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "institution": {"type": "string"},
-                        "degree": {"type": "string"},
-                        "year": {"type": "string"},
-                    },
-                    "required": ["institution"],
-                },
-            },
-            "projects": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "summary": {"type": "string"},
-                    },
-                    "required": ["name"],
-                },
-            },
+            "required": ["skills", "experience", "education", "projects"],
         },
-        "required": ["skills", "experience", "education", "projects"],
     },
 }
 
@@ -153,7 +170,7 @@ _RESUME_EXTRACTION_SYSTEM_PROMPT = (
 
 
 def extract_candidate_fields(resume_text: str) -> dict:
-    """Call Claude to extract structured candidate fields from resume text.
+    """Call the model to extract structured candidate fields from resume text.
 
     Raises ExtractionError on any failure — callers should treat this the same
     as a parsing failure (FL-01.5): persist what we have and route to manual entry,
@@ -161,19 +178,20 @@ def extract_candidate_fields(resume_text: str) -> dict:
     """
     try:
         response = create_message(
-            model=settings.anthropic_model_extraction,
+            model=settings.azure_openai_deployment_extraction,
             system=_RESUME_EXTRACTION_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": resume_text}],
             max_tokens=2048,
             call_type="resume_extraction",
             tools=[_RESUME_FIELDS_TOOL],
-            tool_choice={"type": "tool", "name": "record_resume_fields"},
+            tool_choice={"type": "function", "function": {"name": "record_resume_fields"}},
         )
-    except anthropic.APIError as exc:
-        raise ExtractionError(f"Anthropic API error: {exc}") from exc
+    except openai.OpenAIError as exc:
+        raise ExtractionError(f"Azure OpenAI error: {exc}") from exc
 
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "record_resume_fields":
-            return block.input
+    message = response.choices[0].message
+    for tool_call in message.tool_calls or []:
+        if tool_call.function.name == "record_resume_fields":
+            return json.loads(tool_call.function.arguments)
 
-    raise ExtractionError("Claude response did not include the expected tool call.")
+    raise ExtractionError("Model response did not include the expected tool call.")

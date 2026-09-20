@@ -62,16 +62,18 @@ The candidate's answer audio is transcribed via `app/services/transcription.py` 
 
 ## 4c. LLM Provider Migration (Azure OpenAI)
 
-**Decision (2026-09-03, user-directed, NOT YET IMPLEMENTED)**: switch the LLM provider from Anthropic Claude to **Azure OpenAI**. Deepgram (§4a) is unaffected — this is LLM-only.
+**Decision (2026-09-03, user-directed) — IMPLEMENTED (2026-09-20)**: switched the LLM provider from Anthropic Claude to **Azure OpenAI**. Deepgram (§4a) is unaffected — this was LLM-only. Everything under §4 and §7 above describing the pre-migration Anthropic wiring (`anthropic_model_*` settings, `llm.cacheable()`, Anthropic response shapes) is superseded by this section.
 
-This isn't a drop-in swap of one setting — the whole `backend/app/services/llm.py` wrapper (#6) was built around the Anthropic Messages API and needs rework:
+`backend/app/services/llm.py` (#6) was rewritten from the Anthropic Messages API to the `openai` Python SDK's `AzureOpenAI` client:
 
-- **Client**: Anthropic SDK → `openai` Python SDK's `AzureOpenAI` client (`azure_endpoint`, `api_key`, `api_version`, and a **deployment name** per call — Azure identifies models by a deployment you name yourself in the Azure portal, not a published model ID, so `settings.anthropic_model_*` becomes `settings.azure_openai_deployment_*` and the actual values are whatever the user names their deployments).
-- **Function calling**: Anthropic's `tools`/`input_schema`/`tool_choice` shape → OpenAI's `tools: [{"type": "function", "function": {...}}]` / `tool_choice: {"type": "function", "function": {"name": ...}}`. Both existing tool schemas (`_RESUME_FIELDS_TOOL` in `llm.py`, `REPORT_TOOL` in `report_prompts.py`) need rewriting in the new shape.
-- **Response shape**: Anthropic's `response.content` (a list of typed blocks, text and tool_use mixed) → OpenAI's `response.choices[0].message` (`.content` for plain text, `.tool_calls[0].function.arguments` for a **JSON string** that needs `json.loads()` — Anthropic's `block.input` was already a parsed dict, this is a real behavior difference, not just a rename).
-- **Prompt caching**: Anthropic needs an explicit `cache_control: {"type": "ephemeral"}` breakpoint (`llm.cacheable()`, added in #7) on the content you want cached. Azure OpenAI/OpenAI caching is **automatic** for prompts over ~1024 tokens — no manual breakpoint markup at all. `llm.cacheable()` becomes dead code; `_messages_for_claude()` in `interview.py` (renaming candidate: `_build_messages()`) drops the last-message-wrapping entirely. Usage reporting also changes field names: `cache_read_input_tokens`/`cache_creation_input_tokens` → `usage.prompt_tokens_details.cached_tokens`.
-- **Errors**: `anthropic.APIError` (caught in `interview.py` and `reports.py`) → `openai.APIError` / `openai.OpenAIError`.
-- **Helicone**: still the plan for observability (§5), but self-hosted Helicone's Azure OpenAI integration uses a different base-URL/header pattern than the Anthropic one already wired up — needs its own setup, not just pointing the existing code at a different URL.
+- **Client**: `openai.AzureOpenAI(azure_endpoint=..., api_key=..., api_version=...)`. Azure identifies models by a **deployment name** you choose in the Azure portal, not a published model id — `settings.anthropic_model_*` became `settings.azure_openai_deployment_{extraction,interview,report}`, plus `azure_openai_endpoint`/`azure_openai_api_key`. `api_version` is **not** an env-configurable setting (2026-09-20, user-directed) — the openai SDK's `AzureOpenAI` client still requires the param internally, but it's fixed as `llm.AZURE_OPENAI_API_VERSION` in code rather than exposed per-environment, since there's no reason ops should need to tune it. Actual deployment names are the user's to set once the Azure resource is provisioned — **not yet filled in**, so the app still won't run against a real Azure OpenAI resource without that config.
+- **Function calling**: rewritten to OpenAI's `tools: [{"type": "function", "function": {"name", "description", "parameters"}}]` / `tool_choice: {"type": "function", "function": {"name": ...}}` shape. Both `_RESUME_FIELDS_TOOL` in `llm.py` and `REPORT_TOOL` in `report_prompts.py` updated.
+- **Response shape**: `response.choices[0].message.content` for plain text; `.tool_calls[*].function.arguments` is a **JSON string**, parsed with `json.loads()` in both `llm.extract_candidate_fields()` and `reports.py` (Anthropic's `block.input` was already a parsed dict — this is a real behavior difference, not just a rename).
+- **Prompt caching**: Azure OpenAI/OpenAI caching is automatic for prompts over ~1024 tokens — no manual breakpoint markup. `llm.cacheable()` removed; `interview.py`'s `_messages_for_claude()` renamed `_build_messages()` and no longer wraps the last message. `llm.get_usage()` now reads `usage.prompt_tokens`/`usage.completion_tokens`/`usage.prompt_tokens_details.cached_tokens` — there's no Azure/OpenAI equivalent of Anthropic's separate "cache creation" cost, so `cache_creation_input_tokens` is hardcoded to 0 in the returned dict (kept only so callers don't need to branch on provider).
+- **Errors**: `interview.py` and `reports.py` now catch `openai.OpenAIError` instead of `anthropic.APIError`.
+- **Helicone**: `_build_client()` still passes `settings.helicone_base_url` as the client's `base_url` and forwards the same custom-property headers — **not verified against a real self-hosted Helicone Azure OpenAI integration**, since self-hosted Helicone's Azure OpenAI base-URL/header pattern reportedly differs from the Anthropic one already exercised. Treat Helicone routing as unverified until tested against a live Helicone instance with real Azure OpenAI traffic.
+- **Tests**: `backend/tests/test_llm.py`, `test_interview_router.py`, `test_reports_router.py` rewritten to fake `openai.AzureOpenAI`/chat-completion response shapes instead of the Anthropic message/content-block shapes.
+- **Not yet done**: no real Azure OpenAI resource has been exercised end-to-end (no endpoint/key/deployments available in this environment) — bundle that verification with **#14** rather than treating this migration as fully proven.
 
 ## 4a. Speech-to-Text (audio answers)
 
@@ -87,6 +89,17 @@ This isn't a drop-in swap of one setting — the whole `backend/app/services/llm
 **Implemented (2026-09-02, #9)**: `POST /auth/otp/request` / `POST /auth/otp/verify` in `backend/app/routers/auth.py`. A 6-digit code (hashed with SHA-256 before storage, compared with `hmac.compare_digest`), 5-minute TTL, single-use, capped at 5 verify attempts per code — the most recently requested code is the only one that's valid, so requesting a new one silently invalidates the last (FL-06.2/.3). Success sets `candidates.phone_verified_at` (FL-06.4); the interview screen redirects here the moment a session ends, before any report content renders (FL-06.1).
 
 **Known gap**: no SMS provider is wired up yet — `app/services/otp.py`'s `send_otp()` just logs the code, and the request endpoint echoes it back as `debug_code` only when `APP_ENV=development`. Wiring a real provider (Twilio or similar) is real-credentials work, bundled with #14 rather than tracked separately.
+
+## 4d. File Storage Migration (Azure Blob Storage)
+
+**Decision (2026-09-20, user-directed) — IMPLEMENTED**: switched file storage from S3-compatible object storage to **Azure Blob Storage**, matching the rest of the stack now that Azure OpenAI (§4c) is in place.
+
+`backend/app/services/storage.py` rewritten from `boto3`'s S3 client to `azure-storage-blob`'s `BlobServiceClient`:
+
+- **Client**: `BlobServiceClient.from_connection_string(...)` → `get_container_client(container)` → `get_blob_client(blob_name).upload_blob(data, overwrite=True, content_settings=ContentSettings(content_type=...))`, returning `blob_client.url` as the stored URL. `settings.s3_bucket`/`s3_endpoint_url`/`aws_access_key_id`/`aws_secret_access_key` became `azure_storage_connection_string`/`azure_storage_container`.
+- **Auth**: connection-string auth for now (the account's full connection string, account key included — simplest for local dev/testing). Revisit managed identity once the API is actually running on the VM (§10) — that would drop the connection string from `.env` entirely in favor of the VM's identity.
+- Public interface unchanged: `upload_resume_file()` / `upload_interview_answer_audio()` still take the same args and return a stored URL string, so `resumes.py` and `interview.py` needed no changes beyond a docstring update.
+- **Not yet verified**: container name not yet provided/created — code is written but unexercised against a live account. Bundle with #14.
 
 ## 5. Usage Tracking & Cost Control
 
