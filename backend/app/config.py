@@ -14,7 +14,11 @@ class Settings(BaseSettings):
     azure_storage_connection_string: str = ""
     azure_storage_container: str = ""
 
-    # LLM (Azure OpenAI, routed through self-hosted Helicone — see docs/Architecture-Decisions.md §4c/§5)
+    # LLM (Azure OpenAI, routed through self-hosted Helicone — see docs/Architecture-Decisions.md §4c/§5).
+    # azure_openai_endpoint is Azure's v1 API base URL, e.g.
+    # https://<resource>.openai.azure.com/openai/v1 — no api_version needed on
+    # this surface (confirmed live 2026-09-21), used with the plain openai.OpenAI
+    # client, not openai.AzureOpenAI.
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     # Azure identifies models by a deployment name you choose in the Azure portal,

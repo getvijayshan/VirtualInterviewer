@@ -78,7 +78,7 @@ async def start_interview(session_id: uuid.UUID, db: DBSession = Depends(get_db)
             model=settings.azure_openai_deployment_interview,
             system=system_prompt,
             messages=_build_messages([]),
-            max_tokens=400,
+            max_completion_tokens=400,
             call_type="question_gen",
             session_id=str(session.id),
         )
@@ -175,7 +175,7 @@ async def submit_answer(session_id: uuid.UUID, audio: UploadFile, db: DBSession 
             model=settings.azure_openai_deployment_interview,
             system=system_prompt,
             messages=_build_messages(all_turns),
-            max_tokens=400,
+            max_completion_tokens=400,
             call_type="question_gen",
             session_id=str(session.id),
         )

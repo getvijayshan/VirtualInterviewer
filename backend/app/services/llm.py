@@ -16,25 +16,20 @@ from app.config import settings
 CALL_TYPE_HEADER = "Helicone-Property-Call-Type"
 SESSION_ID_HEADER = "Helicone-Property-Session-Id"
 
-# The openai SDK's AzureOpenAI client requires an api_version (it's not optional
-# in this SDK version) but it isn't something callers/ops should need to set per
-# environment — fixed here rather than exposed as an env var. Bump this constant
-# when moving to a newer Azure OpenAI API surface.
-AZURE_OPENAI_API_VERSION = "2024-10-21"
-
 
 class ExtractionError(Exception):
     """Raised when the model doesn't return a usable structured extraction (FL-01.5)."""
 
 
-def _build_client(extra_headers: dict[str, str]) -> openai.AzureOpenAI:
+def _build_client(extra_headers: dict[str, str]) -> openai.OpenAI:
+    """Plain openai.OpenAI client pointed at Azure's v1 API surface
+    (settings.azure_openai_endpoint, e.g. https://<resource>.openai.azure.com/openai/v1) —
+    not openai.AzureOpenAI. This newer Azure surface is OpenAI-SDK-compatible and doesn't
+    take/require an api_version param at all (2026-09-21, user-directed)."""
     kwargs: dict = {
         "api_key": settings.azure_openai_api_key,
-        "azure_endpoint": settings.azure_openai_endpoint,
-        "api_version": AZURE_OPENAI_API_VERSION,
+        "base_url": settings.helicone_base_url or settings.azure_openai_endpoint,
     }
-    if settings.helicone_base_url:
-        kwargs["base_url"] = settings.helicone_base_url
 
     headers = dict(extra_headers)
     if settings.helicone_api_key:
@@ -42,7 +37,7 @@ def _build_client(extra_headers: dict[str, str]) -> openai.AzureOpenAI:
     if headers:
         kwargs["default_headers"] = headers
 
-    return openai.AzureOpenAI(**kwargs)
+    return openai.OpenAI(**kwargs)
 
 
 def create_message(
@@ -50,7 +45,7 @@ def create_message(
     model: str,
     system: str,
     messages: list[dict],
-    max_tokens: int,
+    max_completion_tokens: int,
     call_type: str,
     session_id: str | None = None,
     tools: list[dict] | None = None,
@@ -63,6 +58,10 @@ def create_message(
     'report_gen') and `session_id` are sent as Helicone custom properties (FL-08.2)
     so per-session cost is queryable in Helicone without a separate usage table.
 
+    `max_completion_tokens`, not `max_tokens` — the gpt-5 reasoning-model family
+    rejects `max_tokens` outright (400 unsupported_parameter), confirmed live
+    2026-09-21 against the real deployment.
+
     Prompt caching is automatic on Azure OpenAI for prompts over ~1024 tokens —
     no manual cache-breakpoint markup needed, unlike the prior Anthropic wrapper.
     """
@@ -74,7 +73,7 @@ def create_message(
     kwargs: dict = {
         "model": model,
         "messages": [{"role": "system", "content": system}, *messages],
-        "max_tokens": max_tokens,
+        "max_completion_tokens": max_completion_tokens,
     }
     if tools:
         kwargs["tools"] = tools
@@ -181,7 +180,7 @@ def extract_candidate_fields(resume_text: str) -> dict:
             model=settings.azure_openai_deployment_extraction,
             system=_RESUME_EXTRACTION_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": resume_text}],
-            max_tokens=2048,
+            max_completion_tokens=2048,
             call_type="resume_extraction",
             tools=[_RESUME_FIELDS_TOOL],
             tool_choice={"type": "function", "function": {"name": "record_resume_fields"}},
