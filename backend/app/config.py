@@ -7,21 +7,27 @@ class Settings(BaseSettings):
     app_env: str = "development"
 
     # Database
-    database_url: str = "postgresql://localhost:5432/candidate_true_companion"
+    database_url: str = "postgresql://candidate_true_companion:candidate_true_companion@localhost:5432/candidate_true_companion"
 
-    # File storage
-    s3_bucket: str = ""
-    s3_endpoint_url: str = ""
-    aws_access_key_id: str = ""
-    aws_secret_access_key: str = ""
+    # File storage (Azure Blob Storage — switched from S3, 2026-09-20, see
+    # docs/Architecture-Decisions.md §4d)
+    azure_storage_connection_string: str = ""
+    azure_storage_container: str = ""
 
-    # LLM (Anthropic, routed through self-hosted Helicone — see docs/Architecture-Decisions.md §5)
-    anthropic_api_key: str = ""
-    anthropic_model_extraction: str = "claude-sonnet-5"  # resume parsing, structured extraction
-    anthropic_model_interview: str = "claude-sonnet-5"  # live interview loop, cost/latency balance (#7)
-    anthropic_model_report: str = "claude-opus-5"  # final report generation, once per session (#10)
-    # Self-hosted Helicone gateway URL for Anthropic traffic. Empty string = call
-    # Anthropic directly (e.g. local dev without a Helicone instance running).
+    # LLM (Azure OpenAI, routed through self-hosted Helicone — see docs/Architecture-Decisions.md §4c/§5).
+    # azure_openai_endpoint is Azure's v1 API base URL, e.g.
+    # https://<resource>.openai.azure.com/openai/v1 — no api_version needed on
+    # this surface (confirmed live 2026-09-21), used with the plain openai.OpenAI
+    # client, not openai.AzureOpenAI.
+    azure_openai_endpoint: str = ""
+    azure_openai_api_key: str = ""
+    # Azure identifies models by a deployment name you choose in the Azure portal,
+    # not a published model id — set these to whatever the deployments are named.
+    azure_openai_deployment_extraction: str = ""  # resume parsing, structured extraction
+    azure_openai_deployment_interview: str = ""  # live interview loop, cost/latency balance (#7)
+    azure_openai_deployment_report: str = ""  # final report generation, once per session (#10)
+    # Self-hosted Helicone gateway URL for Azure OpenAI traffic. Empty string = call
+    # Azure OpenAI directly (e.g. local dev without a Helicone instance running).
     helicone_base_url: str = ""
     helicone_api_key: str = ""
 

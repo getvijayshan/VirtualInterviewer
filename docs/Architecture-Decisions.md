@@ -18,10 +18,10 @@ Explicitly deferred: virtual avatar/video, corporate/B2B mode, screen-share + ge
 | Backend | Python + FastAPI | LLM-heavy logic; Python's ecosystem is friendlier for resume parsing/NLP than Node |
 | DB | Postgres | Candidates, sessions, transcripts, reports — relational fits the data shape |
 | File storage | S3-compatible bucket | Raw resume files |
-| LLM provider | Anthropic Claude API | See §4 |
+| LLM provider | Azure OpenAI (revised 2026-09-03, was Anthropic Claude API) | See §4 |
 | Speech-to-text | Deepgram (initial) → Azure AI Foundry speech services (planned migration) | See §4a |
 | LLM observability | Helicone (self-hosted, pinned to latest tagged stable release) | Per-session cost/usage tracking; see §5 |
-| Hosting | Vercel (frontend) + Render/Fly.io (backend) | Cheap, fast to stand up, no infra babysitting for MVP |
+| Hosting | Vercel (frontend) + self-managed VM, Dockerized Postgres (revised 2026-09-03, was Render/Fly.io) | See §10 |
 
 Deliberately monolith-simple — no microservices, no message queue/worker infra (Celery/SQS) for Phase 1. Add only when parsing or report-generation latency becomes an actual bottleneck.
 
@@ -58,7 +58,24 @@ Session state lives in **Postgres, not in-memory** — a 30-minute interview mus
 
 The candidate's answer audio is transcribed via `app/services/transcription.py` before ever reaching Claude, then also uploaded to S3 (`transcript_turns.audio_file_url`) for STT-quality debugging. FL-05.5's hard stop is checked immediately after persisting the user's answer and before any further Claude call — time-based (`session.started_at + duration_min`), not turn-count-based. On a Claude failure mid-turn, the new user turn is rolled back (not committed) so the frontend can safely retry with the same recorded audio rather than leaving an orphaned answer with no follow-up question.
 
-**Model choice**: Claude Sonnet for the live interview loop (cost/latency balance); reserve Opus for final report generation only (the one expensive call per session).
+**Model choice**: a cheaper/faster deployment for the live interview loop (cost/latency balance); reserve the strongest available deployment for final report generation only (the one expensive call per session). Concretely which Azure OpenAI model deployment fills each role is the user's call once the Azure resource is provisioned — see §4c.
+
+## 4c. LLM Provider Migration (Azure OpenAI)
+
+**Decision (2026-09-03, user-directed) — IMPLEMENTED (2026-09-20)**: switched the LLM provider from Anthropic Claude to **Azure OpenAI**. Deepgram (§4a) is unaffected — this was LLM-only. Everything under §4 and §7 above describing the pre-migration Anthropic wiring (`anthropic_model_*` settings, `llm.cacheable()`, Anthropic response shapes) is superseded by this section.
+
+`backend/app/services/llm.py` (#6) was rewritten from the Anthropic Messages API to the `openai` Python SDK:
+
+- **Client — corrected 2026-09-21**: the resource provisioned for this project (`vs-virtual-interviewer--resource`) exposes Azure's newer **v1 API surface** (`https://<resource>.openai.azure.com/openai/v1`), which is OpenAI-SDK-compatible and takes **no `api_version` param at all** — confirmed live (a classic `openai.AzureOpenAI(azure_endpoint=..., api_version=...)` call against this resource 404'd with `DeploymentNotFound` across every `api_version` tried; a plain REST call to the v1 surface with no `api-version` query param succeeded). Client is now the plain **`openai.OpenAI(api_key=..., base_url=settings.azure_openai_endpoint)`**, not `AzureOpenAI`. `settings.azure_openai_endpoint` must be the full v1 base URL. `llm.AZURE_OPENAI_API_VERSION` (added 2026-09-20) was removed as dead code.
+- **`max_completion_tokens`, not `max_tokens`**: the deployed model (`gpt-5-mini`, deployment name `gpt-5-mini-1`) is a reasoning-model family that rejects `max_tokens` with `400 unsupported_parameter` — confirmed live. `create_message()`'s parameter was renamed `max_completion_tokens` throughout (`llm.py`, `interview.py`, `reports.py`) to match what's actually sent.
+- Azure identifies models by a **deployment name** you choose in the Azure portal, not a published model id — `settings.anthropic_model_*` became `settings.azure_openai_deployment_{extraction,interview,report}`, plus `azure_openai_endpoint`/`azure_openai_api_key`. All three deployments are currently the same `gpt-5-mini-1` deployment.
+- **Function calling**: rewritten to OpenAI's `tools: [{"type": "function", "function": {"name", "description", "parameters"}}]` / `tool_choice: {"type": "function", "function": {"name": ...}}` shape. Both `_RESUME_FIELDS_TOOL` in `llm.py` and `REPORT_TOOL` in `report_prompts.py` updated — **verified live**, a real resume text extraction round-tripped correctly through `extract_candidate_fields()`.
+- **Response shape**: `response.choices[0].message.content` for plain text; `.tool_calls[*].function.arguments` is a **JSON string**, parsed with `json.loads()` in both `llm.extract_candidate_fields()` and `reports.py` (Anthropic's `block.input` was already a parsed dict — this is a real behavior difference, not just a rename).
+- **Prompt caching**: Azure OpenAI/OpenAI caching is automatic for prompts over ~1024 tokens — no manual breakpoint markup. `llm.cacheable()` removed; `interview.py`'s `_messages_for_claude()` renamed `_build_messages()` and no longer wraps the last message. `llm.get_usage()` now reads `usage.prompt_tokens`/`usage.completion_tokens`/`usage.prompt_tokens_details.cached_tokens` — there's no Azure/OpenAI equivalent of Anthropic's separate "cache creation" cost, so `cache_creation_input_tokens` is hardcoded to 0 in the returned dict (kept only so callers don't need to branch on provider).
+- **Errors**: `interview.py` and `reports.py` now catch `openai.OpenAIError` instead of `anthropic.APIError`.
+- **Helicone**: `_build_client()` still passes `settings.helicone_base_url` (if set) as the client's `base_url` in place of the Azure endpoint, and forwards the same custom-property headers — **not verified against a real self-hosted Helicone Azure OpenAI integration**, since self-hosted Helicone's Azure OpenAI base-URL/header pattern reportedly differs from the Anthropic one already exercised. Treat Helicone routing as unverified until tested against a live Helicone instance with real Azure OpenAI traffic.
+- **Tests**: `backend/tests/test_llm.py`, `test_interview_router.py`, `test_reports_router.py` rewritten to fake `openai.OpenAI`/chat-completion response shapes instead of the Anthropic message/content-block shapes.
+- **Verified live (2026-09-21)**: both call paths exercised against the real Azure OpenAI resource — a plain text completion and a tool-calling structured extraction (`extract_candidate_fields()` on real resume text) both returned correct results. **Still unverified**: the interview-loop and report-generation call sites specifically (only `create_message()`/`extract_candidate_fields()` were smoke-tested directly, not through the actual `/sessions/*` endpoints against a live DB+Azure OpenAI stack together), and Helicone routing. Bundle full endpoint-level verification with **#14**.
 
 ## 4a. Speech-to-Text (audio answers)
 
@@ -75,6 +92,17 @@ The candidate's answer audio is transcribed via `app/services/transcription.py` 
 
 **Known gap**: no SMS provider is wired up yet — `app/services/otp.py`'s `send_otp()` just logs the code, and the request endpoint echoes it back as `debug_code` only when `APP_ENV=development`. Wiring a real provider (Twilio or similar) is real-credentials work, bundled with #14 rather than tracked separately.
 
+## 4d. File Storage Migration (Azure Blob Storage)
+
+**Decision (2026-09-20, user-directed) — IMPLEMENTED**: switched file storage from S3-compatible object storage to **Azure Blob Storage**, matching the rest of the stack now that Azure OpenAI (§4c) is in place.
+
+`backend/app/services/storage.py` rewritten from `boto3`'s S3 client to `azure-storage-blob`'s `BlobServiceClient`:
+
+- **Client**: `BlobServiceClient.from_connection_string(...)` → `get_container_client(container)` → `get_blob_client(blob_name).upload_blob(data, overwrite=True, content_settings=ContentSettings(content_type=...))`, returning `blob_client.url` as the stored URL. `settings.s3_bucket`/`s3_endpoint_url`/`aws_access_key_id`/`aws_secret_access_key` became `azure_storage_connection_string`/`azure_storage_container`.
+- **Auth**: connection-string auth for now (the account's full connection string, account key included — simplest for local dev/testing). Revisit managed identity once the API is actually running on the VM (§10) — that would drop the connection string from `.env` entirely in favor of the VM's identity.
+- Public interface unchanged: `upload_resume_file()` / `upload_interview_answer_audio()` still take the same args and return a stored URL string, so `resumes.py` and `interview.py` needed no changes beyond a docstring update.
+- **Not yet verified**: container name not yet provided/created — code is written but unexercised against a live account. Bundle with #14.
+
 ## 5. Usage Tracking & Cost Control
 
 - All Claude API calls proxied through **Helicone**, self-hosted (Docker), **pinned to the latest tagged stable release** — not `latest`/`main` — so upgrades are deliberate. (Helicone is Apache-2.0 OSS; as of this writing the company is in maintenance mode post-Mintlify acquisition — repo still active, self-hosting has no dependency risk, but re-evaluate Langfuse if development activity stalls further.)
@@ -82,7 +110,7 @@ The candidate's answer audio is transcribed via `app/services/transcription.py` 
 - Prompt caching on the system prompt (resume+JD+rules) is the primary cost lever for multi-turn sessions — verify via `cache_read_input_tokens > 0` from turn 2 onward.
 - 30-min free trial: don't pre-shrink it. Build usage tracking first, run real sessions, decide the SKU size from actual $/session data — trial abuse (repeat sign-ups) is a bigger cost risk than raw model spend, so rate-limit by device/email/OTP too.
 
-**Implemented (2026-09-02)**: `backend/app/services/llm.py` is the single entry point for every Claude call — `create_message(model, system, messages, max_tokens, call_type, session_id=None, tools=None, tool_choice=None)`. It builds the Anthropic client pointed at `settings.helicone_base_url` (empty = call Anthropic directly, e.g. local dev with no Helicone instance running) and attaches `Helicone-Property-Call-Type` / `Helicone-Property-Session-Id` headers plus `Helicone-Auth`. `get_usage(response)` reads back `cache_read_input_tokens`/`cache_creation_input_tokens` alongside input/output tokens for later logging. #7 (interview loop) and #10 (report generation) should call `create_message` with `call_type="question_gen"` / `"report_gen"` respectively — resume extraction (#3) already does with `call_type="resume_extraction"`. Real prompt-cache verification (`cache_read_input_tokens > 0` from turn 2 onward) needs an actual multi-turn session, so it's deferred to #7.
+**Implemented (2026-09-02, Anthropic-specific — superseded by §4c)**: `backend/app/services/llm.py` was the single entry point for every Claude call — `create_message(model, system, messages, max_tokens, call_type, session_id=None, tools=None, tool_choice=None)`, built against the Anthropic SDK pointed at `settings.helicone_base_url`, attaching `Helicone-Property-Call-Type` / `Helicone-Property-Session-Id` / `Helicone-Auth` headers. This `create_message`/`get_usage` interface and the Helicone tagging strategy carry over conceptually to the Azure OpenAI migration (§4c) — same call-type/session_id tagging — but the client construction, headers, and Helicone base-URL pattern for Azure OpenAI specifically still need to be implemented; self-hosted Helicone's OpenAI-family integration isn't the same wiring as its Anthropic one.
 
 ## 6. Database Schema (proposed, Phase 1)
 
@@ -162,3 +190,14 @@ Three directions were mocked up and reviewed as an interactive prototype (`desig
 ## 9. Repository & Branching
 
 Repo: `https://github.com/getvijayshan/VirtualInterviewer`. **Git-flow** branching: `main` (release-only, always deployable), `develop` (integration branch), `feature/*` branched from and merged back into `develop`, `release/*` and `hotfix/*` as needed off `main`/`develop` per standard git-flow.
+
+## 10. Deployment (Backend)
+
+**Decision (2026-09-03, user-directed, NOT YET IMPLEMENTED)**: backend (API + database) moves off the originally-proposed Render/Fly.io to a **self-managed VM**:
+
+- **Postgres runs in Docker** on the VM, with its data directory **bind-mounted to a host path** (not an anonymous/named Docker volume) so the data survives a container recreate independent of Docker's own volume lifecycle. `DATABASE_URL` in `.env` then points at that container (`localhost:5432` if the port is published to the host).
+- **The FastAPI API runs directly on the VM** (not containerized) — e.g. a `venv` + a process manager (systemd unit, or similar) running `uvicorn app.main:app`. This is a deliberate split: dockerize the stateful piece (DB), keep the stateless app process simple to redeploy (`git pull` + restart) without also managing an image build/push step for every code change. Revisit if the app process itself needs container-level isolation or the deploy story gets more complex.
+- Frontend hosting (Vercel) is unaffected — this decision is backend-only.
+- No infra-as-code (Terraform/Ansible) yet — a `docker-compose.yml` for Postgres plus manual VM setup is enough for Phase 1 traffic. Revisit if there's ever a second VM or the manual setup steps stop being reproducible from memory.
+
+`infra/docker-compose.yml` (Postgres only) is scaffolded. Not yet implemented: actual VM provisioning and the systemd unit for the API process — those need the real VM to exist first.

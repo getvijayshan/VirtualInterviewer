@@ -85,7 +85,8 @@ def client():
 
 
 def _text_response(text: str):
-    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
+    message = SimpleNamespace(content=text, tool_calls=None)
+    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
 def test_start_interview_creates_first_turn(client, fake_db, pending_session, monkeypatch):
@@ -234,10 +235,10 @@ def test_submit_answer_502_on_claude_failure_rolls_back(client, fake_db, pending
     monkeypatch.setattr(storage, "upload_interview_answer_audio", lambda **kwargs: "https://fake-s3/answer.webm")
     monkeypatch.setattr(interview_router, "transcribe", lambda audio: "My answer.")
 
-    import anthropic
+    import openai
 
     def _raise(**kwargs):
-        raise anthropic.APIError("boom", request=None, body=None)
+        raise openai.APIError("boom", request=SimpleNamespace(), body=None)
 
     monkeypatch.setattr(llm, "create_message", _raise)
 

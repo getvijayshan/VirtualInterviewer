@@ -6,40 +6,43 @@ from app.models import Candidate, InterviewSession, TranscriptTurn
 from app.services.candidate_context import describe_target, summarize_resume
 
 REPORT_TOOL = {
-    "name": "record_interview_report",
-    "description": "Record a structured scorecard for a completed interview.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "overall_score": {
-                "type": "number",
-                "description": "Overall performance, 0-10.",
-            },
-            "questions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "question": {"type": "string"},
-                        "quality": {"type": "string", "enum": ["strong", "needs_work"]},
-                        "note": {
-                            "type": "string",
-                            "description": (
-                                "One concise, specific, actionable note. If 'needs_work', say "
-                                "what a stronger answer would include. If 'strong', say what "
-                                "specifically made it land. Do not restate the answer."
-                            ),
+    "type": "function",
+    "function": {
+        "name": "record_interview_report",
+        "description": "Record a structured scorecard for a completed interview.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "overall_score": {
+                    "type": "number",
+                    "description": "Overall performance, 0-10.",
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string"},
+                            "quality": {"type": "string", "enum": ["strong", "needs_work"]},
+                            "note": {
+                                "type": "string",
+                                "description": (
+                                    "One concise, specific, actionable note. If 'needs_work', say "
+                                    "what a stronger answer would include. If 'strong', say what "
+                                    "specifically made it land. Do not restate the answer."
+                                ),
+                            },
                         },
+                        "required": ["question", "quality", "note"],
                     },
-                    "required": ["question", "quality", "note"],
+                },
+                "communication_notes": {
+                    "type": "string",
+                    "description": "2-3 sentences on pacing, clarity, and structure of the candidate's speech.",
                 },
             },
-            "communication_notes": {
-                "type": "string",
-                "description": "2-3 sentences on pacing, clarity, and structure of the candidate's speech.",
-            },
+            "required": ["overall_score", "questions", "communication_notes"],
         },
-        "required": ["overall_score", "questions", "communication_notes"],
     },
 }
 

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import anthropic
+import openai
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.orm import Session as DBSession
 
@@ -53,17 +53,14 @@ def _is_time_up(session: InterviewSession) -> bool:
     return session.started_at is not None and _time_remaining_seconds(session) <= 0
 
 
-def _messages_for_claude(turns: list[TranscriptTurn]) -> list[dict]:
-    """Map persisted turns to Anthropic messages, marking the last one as a
-    cache breakpoint so the growing conversation prefix is reused turn over
-    turn (FL-09) rather than only the system prompt being cached."""
+def _build_messages(turns: list[TranscriptTurn]) -> list[dict]:
+    """Map persisted turns to chat messages. Azure OpenAI/OpenAI prompt caching
+    is automatic (FL-09) — no manual cache-breakpoint markup needed here, unlike
+    the prior Anthropic wrapper."""
     if not turns:
         return [{"role": "user", "content": KICKOFF_MESSAGE}]
 
-    messages = [{"role": t.role.value, "content": t.content} for t in turns[:-1]]
-    last = turns[-1]
-    messages.append({"role": last.role.value, "content": llm.cacheable(last.content)})
-    return messages
+    return [{"role": t.role.value, "content": t.content} for t in turns]
 
 
 @router.post("/start", response_model=InterviewTurnResponse)
@@ -74,21 +71,21 @@ async def start_interview(session_id: uuid.UUID, db: DBSession = Depends(get_db)
         raise HTTPException(status_code=409, detail="Session already started or ended.")
 
     candidate = db.get(Candidate, session.candidate_id)
-    system_prompt = llm.cacheable(build_system_prompt(candidate, session))
+    system_prompt = build_system_prompt(candidate, session)
 
     try:
         response = llm.create_message(
-            model=settings.anthropic_model_interview,
+            model=settings.azure_openai_deployment_interview,
             system=system_prompt,
-            messages=_messages_for_claude([]),
-            max_tokens=400,
+            messages=_build_messages([]),
+            max_completion_tokens=400,
             call_type="question_gen",
             session_id=str(session.id),
         )
-    except anthropic.APIError as exc:
+    except openai.OpenAIError as exc:
         raise HTTPException(status_code=502, detail=f"Could not start the interview: {exc}") from exc
 
-    question_text = "".join(block.text for block in response.content if block.type == "text").strip()
+    question_text = (response.choices[0].message.content or "").strip()
     if not question_text:
         raise HTTPException(status_code=502, detail="Claude did not return an opening question.")
 
@@ -170,23 +167,23 @@ async def submit_answer(session_id: uuid.UUID, audio: UploadFile, db: DBSession 
         )
 
     candidate = db.get(Candidate, session.candidate_id)
-    system_prompt = llm.cacheable(build_system_prompt(candidate, session))
+    system_prompt = build_system_prompt(candidate, session)
     all_turns = existing_turns + [user_turn]
 
     try:
         response = llm.create_message(
-            model=settings.anthropic_model_interview,
+            model=settings.azure_openai_deployment_interview,
             system=system_prompt,
-            messages=_messages_for_claude(all_turns),
-            max_tokens=400,
+            messages=_build_messages(all_turns),
+            max_completion_tokens=400,
             call_type="question_gen",
             session_id=str(session.id),
         )
-    except anthropic.APIError as exc:
+    except openai.OpenAIError as exc:
         db.rollback()
         raise HTTPException(status_code=502, detail=f"Could not generate the next question: {exc}") from exc
 
-    question_text = "".join(block.text for block in response.content if block.type == "text").strip()
+    question_text = (response.choices[0].message.content or "").strip()
     if not question_text:
         db.rollback()
         raise HTTPException(status_code=502, detail="Claude did not return a question.")

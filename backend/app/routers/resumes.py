@@ -20,7 +20,7 @@ router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 @router.post("", response_model=ResumeUploadResponse)
 async def upload_resume(file: UploadFile, db: Session = Depends(get_db)):
-    """FL-01: accept PDF/DOCX, store in S3, extract structured data via Claude."""
+    """FL-01: accept PDF/DOCX, store in Azure Blob Storage, extract structured data via the LLM."""
     data = await file.read()
 
     try:

@@ -115,22 +115,28 @@ def client():
 
 
 def _report_tool_response():
-    tool_block = SimpleNamespace(
-        type="tool_use",
-        name="record_interview_report",
-        input={
-            "overall_score": 7.5,
-            "questions": [
+    import json
+
+    tool_call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="record_interview_report",
+            arguments=json.dumps(
                 {
-                    "question": "Tell me about a bug you fixed.",
-                    "quality": "strong",
-                    "note": "Clear root cause and a concrete fix.",
+                    "overall_score": 7.5,
+                    "questions": [
+                        {
+                            "question": "Tell me about a bug you fixed.",
+                            "quality": "strong",
+                            "note": "Clear root cause and a concrete fix.",
+                        }
+                    ],
+                    "communication_notes": "Confident pacing throughout.",
                 }
-            ],
-            "communication_notes": "Confident pacing throughout.",
-        },
+            ),
+        )
     )
-    return SimpleNamespace(content=[tool_block])
+    message = SimpleNamespace(content=None, tool_calls=[tool_call])
+    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
 def test_generate_report_returns_structured_scorecard(client, fake_db, monkeypatch):
@@ -208,10 +214,10 @@ def test_generate_report_409_when_session_not_completed(client, verified_candida
 
 
 def test_generate_report_502_on_claude_failure(client, fake_db, monkeypatch):
-    import anthropic
+    import openai
 
     def _raise(**kwargs):
-        raise anthropic.APIError("boom", request=None, body=None)
+        raise openai.APIError("boom", request=SimpleNamespace(), body=None)
 
     monkeypatch.setattr(llm, "create_message", _raise)
     resp = client.post(f"/sessions/{fake_db.added[1].id}/report")
