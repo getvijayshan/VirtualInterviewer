@@ -18,7 +18,7 @@ design/            Shareable HTML prototypes (not shipped code)
 
 ## Stack
 
-Next.js frontend, Python/FastAPI backend, Postgres (Dockerized on a self-managed VM, API running directly on the same VM — see ADR §10), Azure Blob Storage (switched from S3 2026-09-20, see ADR §4d), **Azure OpenAI** (migrated from Anthropic Claude 2026-09-20 — see ADR §4c before touching `backend/app/services/llm.py`; real Azure resource not yet exercised end-to-end) routed through self-hosted Helicone for usage tracking, Deepgram for speech-to-text (planned migration to Azure AI Foundry — keep STT behind a single `transcribe()` interface so that swap stays a provider change, not a rework). Monolith-simple: no microservices, no queue infra until an actual bottleneck shows up.
+Next.js frontend, Python/FastAPI backend, Postgres (Dockerized on a self-managed VM, API running directly on the same VM — see ADR §10; VM provisioning + deploy automated via `.github/workflows/deploy-vm.yml`, manual-trigger only — see ADR §11), Azure Blob Storage (switched from S3 2026-09-20, see ADR §4d), **Azure OpenAI** (migrated from Anthropic Claude 2026-09-20 — see ADR §4c before touching `backend/app/services/llm.py`; real Azure resource not yet exercised end-to-end) routed through self-hosted Helicone for usage tracking, Deepgram for speech-to-text (planned migration to Azure AI Foundry — keep STT behind a single `transcribe()` interface so that swap stays a provider change, not a rework). Monolith-simple: no microservices, no queue infra until an actual bottleneck shows up.
 
 ## Conventions
 

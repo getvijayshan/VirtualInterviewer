@@ -21,3 +21,7 @@ infra/data/
 # General
 .DS_Store
 *.log
+
+# Azure exports + SSH keys (contain secrets/private keys)
+infra/az-resource/
+*.pem

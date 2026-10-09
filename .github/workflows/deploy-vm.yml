@@ -1,0 +1,155 @@
+name: Provision & Deploy Azure VM
+
+# Manual trigger only (2026-09-22, user-directed) — this provisions/modifies
+# real billable Azure infrastructure and there's only one VM, so it's never
+# run automatically on push. See docs/Architecture-Decisions.md §11.
+#
+# The service principal needs Azure RBAC "Contributor" on the resource group
+# (an Entra directory role is not enough). See docs/Azure-GitHub-Secrets-Setup.md.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   AZURE_CREDENTIALS               az ad sp create-for-rbac --sdk-auth JSON (or an OIDC-federated equivalent)
+#   VM_SSH_PUBLIC_KEY                contents of the deploy SSH keypair's public key
+#   VM_SSH_PRIVATE_KEY               contents of the deploy SSH keypair's private key
+#   ALLOWED_SSH_SOURCE_IP            optional; CIDR/IP allowed to SSH in (default "*" if unset)
+#   POSTGRES_USER                    e.g. candidate_true_companion
+#   POSTGRES_PASSWORD                a real password, not the local dev placeholder
+#   POSTGRES_DB                      e.g. candidate_true_companion
+#   AZURE_STORAGE_CONNECTION_STRING
+#   AZURE_STORAGE_CONTAINER
+#   AZURE_OPENAI_ENDPOINT             the v1 API surface URL, see ADR §4c
+#   AZURE_OPENAI_API_KEY
+#   AZURE_OPENAI_DEPLOYMENT_EXTRACTION / _INTERVIEW / _REPORT
+#   DEEPGRAM_API_KEY
+#   HELICONE_BASE_URL / HELICONE_API_KEY   optional; leave unset to call Azure OpenAI directly
+on:
+  workflow_dispatch:
+    inputs:
+      provision_infra:
+        description: "Create the VM + networking (first run only; fails if they already exist)"
+        type: boolean
+        required: false
+        default: false
+      provision_ai_storage:
+        description: "Create the Blob storage account/container + AI Foundry (first run only)"
+        type: boolean
+        required: false
+        default: false
+      resource_group:
+        description: "Azure resource group name"
+        required: false
+        default: "resource-virtual-interviewer"
+      location:
+        description: "Azure region"
+        required: false
+        default: "centralindia"
+      vm_name:
+        description: "VM name"
+        required: false
+        default: "virtual-interviewer-backend-vm"
+      vm_size:
+        description: "Azure VM size"
+        required: false
+        default: "Standard_D2ls_v6"
+      admin_username:
+        description: "SSH admin username created on the VM"
+        required: false
+        default: "azureuser"
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    outputs:
+      vm_public_ip: ${{ steps.ip.outputs.vm_public_ip }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Provision VM + networking
+        if: ${{ inputs.provision_infra }}
+        env:
+          RESOURCE_GROUP: ${{ inputs.resource_group }}
+          LOCATION: ${{ inputs.location }}
+          VM_NAME: ${{ inputs.vm_name }}
+          VM_SIZE: ${{ inputs.vm_size }}
+          ADMIN_USERNAME: ${{ inputs.admin_username }}
+          SSH_PUBLIC_KEY: ${{ secrets.VM_SSH_PUBLIC_KEY }}
+          ALLOWED_SSH_SOURCE_IP: ${{ secrets.ALLOWED_SSH_SOURCE_IP }}
+        run: bash infra/scripts/provision_vm.sh
+
+      - name: Provision storage + AI Foundry
+        if: ${{ inputs.provision_ai_storage }}
+        run: bash infra/scripts/provision_ai_storage.sh
+
+      - name: Look up the VM public IP
+        id: ip
+        run: |
+          ip=$(az vm show -d -g "${{ inputs.resource_group }}"             -n "${{ inputs.vm_name }}" --query publicIps -o tsv)
+          echo "vm_public_ip=$ip" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: provision
+    runs-on: ubuntu-latest
+    env:
+      VM_PUBLIC_IP: ${{ needs.provision.outputs.vm_public_ip }}
+      ADMIN_USERNAME: ${{ inputs.admin_username }}
+      APP_DIR: /opt/candidate-true-companion
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+
+      - name: Trust the VM's host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$VM_PUBLIC_IP" >> ~/.ssh/known_hosts
+
+      - name: Write backend/.env (real secrets, never committed)
+        run: |
+          cat > backend/.env <<EOF
+          APP_ENV=production
+          DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}
+
+          AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_CONTAINER=${{ secrets.AZURE_STORAGE_CONTAINER }}
+
+          AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_DEPLOYMENT_EXTRACTION=${{ secrets.AZURE_OPENAI_DEPLOYMENT_EXTRACTION }}
+          AZURE_OPENAI_DEPLOYMENT_INTERVIEW=${{ secrets.AZURE_OPENAI_DEPLOYMENT_INTERVIEW }}
+          AZURE_OPENAI_DEPLOYMENT_REPORT=${{ secrets.AZURE_OPENAI_DEPLOYMENT_REPORT }}
+
+          HELICONE_BASE_URL=${{ secrets.HELICONE_BASE_URL }}
+          HELICONE_API_KEY=${{ secrets.HELICONE_API_KEY }}
+
+          STT_PROVIDER=deepgram
+          DEEPGRAM_API_KEY=${{ secrets.DEEPGRAM_API_KEY }}
+
+          SESSION_DURATION_MIN=30
+          EOF
+
+      - name: Write infra/.env (Postgres container credentials, never committed)
+        run: |
+          cat > infra/.env <<EOF
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          POSTGRES_DATA_DIR=/data/candidate-true-companion/postgres
+          EOF
+
+      - name: Copy app code + infra to the VM
+        run: |
+          ssh "$ADMIN_USERNAME@$VM_PUBLIC_IP" "sudo mkdir -p $APP_DIR && sudo chown $ADMIN_USERNAME:$ADMIN_USERNAME $APP_DIR"
+          rsync -az --delete \
+            --exclude 'venv' --exclude '__pycache__' --exclude '.git' --exclude 'data' \
+            backend infra \
+            "$ADMIN_USERNAME@$VM_PUBLIC_IP:$APP_DIR/"
+
+      - name: Run setup/deploy script on the VM
+        run: |
+          ssh "$ADMIN_USERNAME@$VM_PUBLIC_IP" "APP_DIR=$APP_DIR bash $APP_DIR/infra/scripts/setup_vm.sh"
