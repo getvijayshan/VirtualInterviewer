@@ -1,0 +1,17 @@
+[Unit]
+Description=Candidate True Companion FastAPI backend
+After=network.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/candidate-true-companion/backend
+EnvironmentFile=/opt/candidate-true-companion/backend/.env
+ExecStart=/opt/candidate-true-companion/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+# Runs as root (default when User= is unset) since setup_vm.sh installs this
+# as root via sudo and the admin username varies per deploy. Revisit with a
+# dedicated non-root service user if this ever needs hardening beyond Phase 1.
+
+[Install]
+WantedBy=multi-user.target
