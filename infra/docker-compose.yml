@@ -1,0 +1,28 @@
+# Postgres for Candidate True Companion, run on the backend VM.
+# See docs/Architecture-Decisions.md §10 — the API itself runs directly on
+# the VM (not containerized), only the database is Dockerized here.
+#
+# Usage on the VM:
+#   cp infra/.env.example infra/.env   # then fill in a real password
+#   docker compose --env-file infra/.env -f infra/docker-compose.yml up -d
+#
+# POSTGRES_DATA_DIR is a bind mount (not a named Docker volume) so the data
+# lives at a known host path, independent of Docker's own volume lifecycle.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-candidate_true_companion}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in infra/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-candidate_true_companion}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ${POSTGRES_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-candidate_true_companion}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

@@ -18,10 +18,10 @@ Explicitly deferred: virtual avatar/video, corporate/B2B mode, screen-share + ge
 | Backend | Python + FastAPI | LLM-heavy logic; Python's ecosystem is friendlier for resume parsing/NLP than Node |
 | DB | Postgres | Candidates, sessions, transcripts, reports — relational fits the data shape |
 | File storage | S3-compatible bucket | Raw resume files |
-| LLM provider | Anthropic Claude API | See §4 |
-| Speech-to-text | Whisper (initial) → Azure AI Foundry speech services (planned migration) | See §4a |
+| LLM provider | Azure OpenAI (revised 2026-09-03, was Anthropic Claude API) | See §4 |
+| Speech-to-text | Deepgram (initial) → Azure AI Foundry speech services (planned migration) | See §4a |
 | LLM observability | Helicone (self-hosted, pinned to latest tagged stable release) | Per-session cost/usage tracking; see §5 |
-| Hosting | Vercel (frontend) + Render/Fly.io (backend) | Cheap, fast to stand up, no infra babysitting for MVP |
+| Hosting | Vercel (frontend) + self-managed VM, Dockerized Postgres (revised 2026-09-03, was Render/Fly.io) | See §10 |
 
 Deliberately monolith-simple — no microservices, no message queue/worker infra (Celery/SQS) for Phase 1. Add only when parsing or report-generation latency becomes an actual bottleneck.
 
@@ -52,16 +52,56 @@ Session state lives in **Postgres, not in-memory** — a 30-minute interview mus
 
 **Report generation** is a *separate* call at the end, over the full transcript, with a different ("strict grader") system prompt — not per-turn scoring.
 
-**Model choice**: Claude Sonnet for the live interview loop (cost/latency balance); reserve Opus for final report generation only (the one expensive call per session).
+**Implemented (2026-09-03, #10)**: `POST /sessions/{id}/report` / `GET /sessions/{id}/report` in `backend/app/routers/reports.py`. One tool-use call (`app/services/report_prompts.py`) over the whole transcript at once — per-question `strong`/`needs_work` + a specific note, an overall 0-10 score, and a communication summary. Idempotent: if a `Report` row already exists for the session, both endpoints return it without calling Claude again (FL-07.6) — no separate "regenerate" action exists yet. **Enforced server-side, not just at the frontend route**: both endpoints 403 unless `candidates.phone_verified_at` is set (FL-06) and 409 unless the session is `completed` — a direct API call can't skip the auth gate or grade a session still in progress. Resume-summary and target-description prompt fragments are shared with the interview loop via `app/services/candidate_context.py` (extracted from `interview_prompts.py` during this change) so the two don't drift independently.
+
+**Implemented (2026-09-02, #7)**: `POST /sessions/{id}/start` / `POST /sessions/{id}/turns` / `GET /sessions/{id}/transcript` / `POST /sessions/{id}/end` in `backend/app/routers/interview.py`. System prompt built by `app/services/interview_prompts.py` from the candidate's resume + session target (jd/role/topic) — deterministic per session (FL-09.1: no session_id/timestamp interpolated into the text itself, those only go in the Helicone headers). Both the system prompt **and the last message of the growing conversation** are wrapped with an `ephemeral` cache breakpoint (`llm.cacheable()`) each call — caching only the system block would leave the resent transcript uncached; marking the last message lets Anthropic reuse the previous call's cached prefix, which is what actually delivers the "only pay full price for the new turn" saving described above. Real `cache_read_input_tokens > 0` verification still needs a live Anthropic key — not done in this environment.
+
+The candidate's answer audio is transcribed via `app/services/transcription.py` before ever reaching Claude, then also uploaded to S3 (`transcript_turns.audio_file_url`) for STT-quality debugging. FL-05.5's hard stop is checked immediately after persisting the user's answer and before any further Claude call — time-based (`session.started_at + duration_min`), not turn-count-based. On a Claude failure mid-turn, the new user turn is rolled back (not committed) so the frontend can safely retry with the same recorded audio rather than leaving an orphaned answer with no follow-up question.
+
+**Model choice**: a cheaper/faster deployment for the live interview loop (cost/latency balance); reserve the strongest available deployment for final report generation only (the one expensive call per session). Concretely which Azure OpenAI model deployment fills each role is the user's call once the Azure resource is provisioned — see §4c.
+
+## 4c. LLM Provider Migration (Azure OpenAI)
+
+**Decision (2026-09-03, user-directed) — IMPLEMENTED (2026-09-20)**: switched the LLM provider from Anthropic Claude to **Azure OpenAI**. Deepgram (§4a) is unaffected — this was LLM-only. Everything under §4 and §7 above describing the pre-migration Anthropic wiring (`anthropic_model_*` settings, `llm.cacheable()`, Anthropic response shapes) is superseded by this section.
+
+`backend/app/services/llm.py` (#6) was rewritten from the Anthropic Messages API to the `openai` Python SDK:
+
+- **Client — corrected 2026-09-21**: the resource provisioned for this project (`vs-virtual-interviewer--resource`) exposes Azure's newer **v1 API surface** (`https://<resource>.openai.azure.com/openai/v1`), which is OpenAI-SDK-compatible and takes **no `api_version` param at all** — confirmed live (a classic `openai.AzureOpenAI(azure_endpoint=..., api_version=...)` call against this resource 404'd with `DeploymentNotFound` across every `api_version` tried; a plain REST call to the v1 surface with no `api-version` query param succeeded). Client is now the plain **`openai.OpenAI(api_key=..., base_url=settings.azure_openai_endpoint)`**, not `AzureOpenAI`. `settings.azure_openai_endpoint` must be the full v1 base URL. `llm.AZURE_OPENAI_API_VERSION` (added 2026-09-20) was removed as dead code.
+- **`max_completion_tokens`, not `max_tokens`**: the deployed model (`gpt-5-mini`, deployment name `gpt-5-mini-1`) is a reasoning-model family that rejects `max_tokens` with `400 unsupported_parameter` — confirmed live. `create_message()`'s parameter was renamed `max_completion_tokens` throughout (`llm.py`, `interview.py`, `reports.py`) to match what's actually sent.
+- Azure identifies models by a **deployment name** you choose in the Azure portal, not a published model id — `settings.anthropic_model_*` became `settings.azure_openai_deployment_{extraction,interview,report}`, plus `azure_openai_endpoint`/`azure_openai_api_key`. All three deployments are currently the same `gpt-5-mini-1` deployment.
+- **Function calling**: rewritten to OpenAI's `tools: [{"type": "function", "function": {"name", "description", "parameters"}}]` / `tool_choice: {"type": "function", "function": {"name": ...}}` shape. Both `_RESUME_FIELDS_TOOL` in `llm.py` and `REPORT_TOOL` in `report_prompts.py` updated — **verified live**, a real resume text extraction round-tripped correctly through `extract_candidate_fields()`.
+- **Response shape**: `response.choices[0].message.content` for plain text; `.tool_calls[*].function.arguments` is a **JSON string**, parsed with `json.loads()` in both `llm.extract_candidate_fields()` and `reports.py` (Anthropic's `block.input` was already a parsed dict — this is a real behavior difference, not just a rename).
+- **Prompt caching**: Azure OpenAI/OpenAI caching is automatic for prompts over ~1024 tokens — no manual breakpoint markup. `llm.cacheable()` removed; `interview.py`'s `_messages_for_claude()` renamed `_build_messages()` and no longer wraps the last message. `llm.get_usage()` now reads `usage.prompt_tokens`/`usage.completion_tokens`/`usage.prompt_tokens_details.cached_tokens` — there's no Azure/OpenAI equivalent of Anthropic's separate "cache creation" cost, so `cache_creation_input_tokens` is hardcoded to 0 in the returned dict (kept only so callers don't need to branch on provider).
+- **Errors**: `interview.py` and `reports.py` now catch `openai.OpenAIError` instead of `anthropic.APIError`.
+- **Helicone**: `_build_client()` still passes `settings.helicone_base_url` (if set) as the client's `base_url` in place of the Azure endpoint, and forwards the same custom-property headers — **not verified against a real self-hosted Helicone Azure OpenAI integration**, since self-hosted Helicone's Azure OpenAI base-URL/header pattern reportedly differs from the Anthropic one already exercised. Treat Helicone routing as unverified until tested against a live Helicone instance with real Azure OpenAI traffic.
+- **Tests**: `backend/tests/test_llm.py`, `test_interview_router.py`, `test_reports_router.py` rewritten to fake `openai.OpenAI`/chat-completion response shapes instead of the Anthropic message/content-block shapes.
+- **Verified live (2026-09-21)**: both call paths exercised against the real Azure OpenAI resource — a plain text completion and a tool-calling structured extraction (`extract_candidate_fields()` on real resume text) both returned correct results. **Still unverified**: the interview-loop and report-generation call sites specifically (only `create_message()`/`extract_candidate_fields()` were smoke-tested directly, not through the actual `/sessions/*` endpoints against a live DB+Azure OpenAI stack together), and Helicone routing. Bundle full endpoint-level verification with **#14**.
 
 ## 4a. Speech-to-Text (audio answers)
 
 **Decision (2026-09-01)**: candidate answers are recorded as audio in the browser and transcribed server-side before being appended to the transcript as a `user` turn — the LLM only ever sees text.
 
-- **Initial provider: Whisper** (self-hosted or OpenAI API — implementation detail to confirm at build time). Chosen to unblock Phase 1 build immediately without waiting on an enterprise cloud contract.
+- **Initial provider: Deepgram** (revised 2026-09-02, was Whisper). Hosted API, no self-managed model/GPU infra, low-latency streaming-capable transcription — a better fit than self-hosting Whisper for a small team that isn't running its own inference infrastructure yet.
 - **Planned migration: Azure AI Foundry speech services.** Once available, swap the transcription call behind a single internal interface (e.g. `transcribe(audio_bytes) -> str`) so the migration is a provider-swap, not a rework of the interview loop.
 - Track transcription latency and cost the same way as LLM calls — tag with `session_id` in Helicone (or log alongside it) so per-session cost includes STT, not just Claude usage.
 - Recording UX: tap-to-record / tap-to-stop (not push-to-talk), waveform + elapsed-time feedback while recording, "Transcribing…" state before the answer appears in the transcript. See `design/` prototype for the reference interaction.
+
+## 4b. Auth Gate (OTP)
+
+**Implemented (2026-09-02, #9)**: `POST /auth/otp/request` / `POST /auth/otp/verify` in `backend/app/routers/auth.py`. A 6-digit code (hashed with SHA-256 before storage, compared with `hmac.compare_digest`), 5-minute TTL, single-use, capped at 5 verify attempts per code — the most recently requested code is the only one that's valid, so requesting a new one silently invalidates the last (FL-06.2/.3). Success sets `candidates.phone_verified_at` (FL-06.4); the interview screen redirects here the moment a session ends, before any report content renders (FL-06.1).
+
+**Known gap**: no SMS provider is wired up yet — `app/services/otp.py`'s `send_otp()` just logs the code, and the request endpoint echoes it back as `debug_code` only when `APP_ENV=development`. Wiring a real provider (Twilio or similar) is real-credentials work, bundled with #14 rather than tracked separately.
+
+## 4d. File Storage Migration (Azure Blob Storage)
+
+**Decision (2026-09-20, user-directed) — IMPLEMENTED**: switched file storage from S3-compatible object storage to **Azure Blob Storage**, matching the rest of the stack now that Azure OpenAI (§4c) is in place.
+
+`backend/app/services/storage.py` rewritten from `boto3`'s S3 client to `azure-storage-blob`'s `BlobServiceClient`:
+
+- **Client**: `BlobServiceClient.from_connection_string(...)` → `get_container_client(container)` → `get_blob_client(blob_name).upload_blob(data, overwrite=True, content_settings=ContentSettings(content_type=...))`, returning `blob_client.url` as the stored URL. `settings.s3_bucket`/`s3_endpoint_url`/`aws_access_key_id`/`aws_secret_access_key` became `azure_storage_connection_string`/`azure_storage_container`.
+- **Auth**: connection-string auth for now (the account's full connection string, account key included — simplest for local dev/testing). Revisit managed identity once the API is actually running on the VM (§10) — that would drop the connection string from `.env` entirely in favor of the VM's identity.
+- Public interface unchanged: `upload_resume_file()` / `upload_interview_answer_audio()` still take the same args and return a stored URL string, so `resumes.py` and `interview.py` needed no changes beyond a docstring update.
+- **Not yet verified**: container name not yet provided/created — code is written but unexercised against a live account. Bundle with #14.
 
 ## 5. Usage Tracking & Cost Control
 
@@ -69,6 +109,8 @@ Session state lives in **Postgres, not in-memory** — a 30-minute interview mus
 - Every call tagged with `session_id` + call-type (`question_gen` / `report_gen`) via Helicone custom properties → per-session cost is queryable without building our own dashboard first.
 - Prompt caching on the system prompt (resume+JD+rules) is the primary cost lever for multi-turn sessions — verify via `cache_read_input_tokens > 0` from turn 2 onward.
 - 30-min free trial: don't pre-shrink it. Build usage tracking first, run real sessions, decide the SKU size from actual $/session data — trial abuse (repeat sign-ups) is a bigger cost risk than raw model spend, so rate-limit by device/email/OTP too.
+
+**Implemented (2026-09-02, Anthropic-specific — superseded by §4c)**: `backend/app/services/llm.py` was the single entry point for every Claude call — `create_message(model, system, messages, max_tokens, call_type, session_id=None, tools=None, tool_choice=None)`, built against the Anthropic SDK pointed at `settings.helicone_base_url`, attaching `Helicone-Property-Call-Type` / `Helicone-Property-Session-Id` / `Helicone-Auth` headers. This `create_message`/`get_usage` interface and the Helicone tagging strategy carry over conceptually to the Azure OpenAI migration (§4c) — same call-type/session_id tagging — but the client construction, headers, and Helicone base-URL pattern for Azure OpenAI specifically still need to be implemented; self-hosted Helicone's OpenAI-family integration isn't the same wiring as its Anthropic one.
 
 ## 6. Database Schema (proposed, Phase 1)
 
@@ -78,8 +120,19 @@ candidates
   name
   email
   phone
+  phone_verified_at        -- set on successful OTP verify (FL-06.4)
   resume_file_url
   resume_parsed_json      -- structured extraction: skills, experience, education, projects
+  created_at
+
+otp_codes
+  id (pk)
+  candidate_id (fk -> candidates)
+  phone                    -- number this code was sent to (may differ from candidates.phone if changed at the auth gate)
+  code_hash                -- SHA-256, never the raw code
+  expires_at
+  consumed_at
+  attempt_count
   created_at
 
 sessions
@@ -102,7 +155,7 @@ transcript_turns
   role                     -- 'assistant' (question) | 'user' (answer)
   content                  -- transcribed text for user turns
   audio_file_url            -- nullable; raw answer audio in S3, kept for STT-quality debugging/reprocessing
-  transcription_provider    -- 'whisper' | 'azure_foundry' (nullable for assistant turns)
+  transcription_provider    -- 'deepgram' | 'azure_foundry' (nullable for assistant turns)
   created_at
 
 reports
@@ -130,8 +183,34 @@ Open question / to revisit: whether `resume_parsed_json` needs its own versioned
 
 ## 8. Visual Identity
 
-Three directions were mocked up and reviewed as an interactive prototype (`design/Candidate-True-Companion-Prototype.html`, theme picker built in): **Signal** (dark/indigo/violet, Space Grotesk + Inter), **Momentum** (warm cream/coral/gold, Bricolage Grotesque + Manrope), **Clearance** (crisp graphite/mint/lime, Archivo + IBM Plex). Token values for all three are in `frontend/theme/tokens.css`, structured as CSS custom properties per brand so switching the shipped theme is a config change, not a rewrite. No direction is finalized yet — team is reviewing the prototype to pick one.
+Three directions were mocked up and reviewed as an interactive prototype (`design/Candidate-True-Companion-Prototype.html`, theme picker built in): Signal (dark/indigo/violet, Space Grotesk + Inter), **Momentum** (warm cream/coral/gold, Bricolage Grotesque + Manrope), Clearance (crisp graphite/mint/lime, Archivo + IBM Plex).
+
+**Decision (2026-09-01): Momentum** — warm, coach-like, energetic; matches the "energetic but serious" brief for a Gen Z/Millennial audience better than the more clinical/tech-forward Signal or Clearance. Set via `ACTIVE_BRAND` in `frontend/app/layout.tsx`. Token values for all three remain in `frontend/theme/tokens.css` — kept live (not deleted) in case of a future pivot, but Momentum is what ships.
 
 ## 9. Repository & Branching
 
 Repo: `https://github.com/getvijayshan/VirtualInterviewer`. **Git-flow** branching: `main` (release-only, always deployable), `develop` (integration branch), `feature/*` branched from and merged back into `develop`, `release/*` and `hotfix/*` as needed off `main`/`develop` per standard git-flow.
+
+## 10. Deployment (Backend)
+
+**Decision (2026-09-03, user-directed)**: backend (API + database) moves off the originally-proposed Render/Fly.io to a **self-managed VM**:
+
+- **Postgres runs in Docker** on the VM, with its data directory **bind-mounted to a host path** (not an anonymous/named Docker volume) so the data survives a container recreate independent of Docker's own volume lifecycle. `DATABASE_URL` in `.env` then points at that container (`localhost:5432` if the port is published to the host).
+- **The FastAPI API runs directly on the VM** (not containerized) — a `venv` + a systemd unit running `uvicorn app.main:app`, sitting behind **Nginx** as a reverse proxy on 80/443 (added 2026-09-22, §11) rather than exposed on its own port directly.
+- Frontend hosting (Vercel) is unaffected — this decision is backend-only.
+
+**Superseded by §11 (2026-09-22)**: the "no infra-as-code yet, manual VM setup" line from the original decision no longer holds — provisioning and dependency installation are now automated via `infra/scripts/*.sh` + a GitHub Actions workflow, not manual steps kept in memory.
+
+## 11. CI/CD: Azure VM Provisioning & Deployment
+
+**Decision (2026-09-22, user-directed) — IMPLEMENTED, not yet run against real Azure**: a GitHub Actions workflow automates provisioning the backend VM and deploying the API + database onto it, replacing the "manual VM setup" note in §10.
+
+- **Trigger**: `workflow_dispatch` only (`.github/workflows/deploy-vm.yml`) — never on push. This provisions/modifies real billable Azure infrastructure and there's only one VM in play, so it's a deliberate action, not a side effect of merging code.
+- **Provisioning tool**: plain **Azure CLI scripts** (`infra/scripts/provision_vm.sh` for RG/NSG/vnet/public IP/NIC/VM, `provision_ai_storage.sh` for the Blob account/container + AI Foundry), not Terraform/Bicep. **Updated 2026-10-09**: the scripts mirror the hand-built portal environment (`resource-virtual-interviewer`, `virtual-interviewer-backend-vm`, `Standard_D2ls_v6`, Ubuntu 24.04 Gen2, Trusted Launch, NVMe, zone 1, admin `azureuser`; Foundry `ai-foundry-southindia` in `southindia-ai-models` since Central India lacks the models) and are deliberately **not idempotent** — they create everything and fail on existing resources. The workflow gates them behind `provision_infra` / `provision_ai_storage` inputs (default off), so routine redeploys skip provisioning. Service principal needs Azure RBAC **Contributor** on the resource group(s), not an Entra directory role.
+- **Public IP**: kept on the VM — new VNets have no default outbound internet, so without it (or a costlier NAT gateway) the VM can't reach apt/Docker/Azure OpenAI/Deepgram/Blob, and GitHub runners can't SSH in.
+- **Network**: NSG (HTTPS 300, HTTP 310, SSH 320) opens only 22 (SSH, source IP restrictable via `ALLOWED_SSH_SOURCE_IP`), 80, and 443. Postgres (5432) and the API's own port (8000) are **not** opened externally — Postgres binds `127.0.0.1` only (§4d/§10), and the API sits behind an Nginx reverse proxy (`infra/nginx/candidate-true-companion.conf`) that forwards 80 → `127.0.0.1:8000`. No TLS cert wired up yet (Phase 1) — add one (e.g. certbot) once a real domain points at the VM's public IP.
+- **Dependency installation + deploy** (`infra/scripts/setup_vm.sh`, run over SSH from the pipeline): installs Docker, Python 3, Nginx; brings up Postgres via the existing `infra/docker-compose.yml`; builds/updates the backend's `venv` and installs `requirements.txt`; runs `alembic upgrade head`; installs/updates the systemd unit (`infra/systemd/candidate-true-companion-api.service`) and Nginx config, then restarts both. Idempotent — safe to re-run for redeploys, not just first-time setup.
+- **Code transfer**: the pipeline `rsync`s `backend/` + `infra/` from the GitHub Actions runner (which already has the checked-out repo) to the VM, rather than having the VM `git pull` from GitHub itself — avoids needing GitHub credentials on the VM.
+- **Secrets**: `backend/.env` and `infra/.env` are generated on the runner from GitHub Actions secrets and copied to the VM — never committed, never baked into the scripts. See the secrets list documented as a comment at the top of `deploy-vm.yml`.
+- **Auth to Azure**: `azure/login` with an `AZURE_CREDENTIALS` service-principal secret (simplest to set up for now). Revisit OIDC federated credentials (no long-lived secret) if this pipeline gets used often enough to matter.
+- **Not yet verified**: no Azure subscription/credentials available in this environment to actually run the pipeline — scripts are written and pass `bash -n`/YAML syntax checks, but have not provisioned a real VM or exercised a real deploy. Bundle that verification with **#14**.
