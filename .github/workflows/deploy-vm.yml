@@ -107,13 +107,22 @@ jobs:
       - name: Trust the VM's host key
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H "$VM_PUBLIC_IP" >> ~/.ssh/known_hosts
+          for attempt in 1 2 3 4 5; do
+            if ssh-keyscan -T 15 -H "$VM_PUBLIC_IP" > /tmp/host_keys 2>/dev/null && [ -s /tmp/host_keys ]; then
+              cat /tmp/host_keys >> ~/.ssh/known_hosts
+              exit 0
+            fi
+            echo "ssh-keyscan attempt $attempt failed; retrying in 10s"
+            sleep 10
+          done
+          echo "::error::Cannot reach port 22 on $VM_PUBLIC_IP from the GitHub runner. Check the VM is running, the NSG SSH rule allows the runner (source must be * or the runner's IP), and sshd is up."
+          exit 1
 
       - name: Write backend/.env (real secrets, never committed)
         run: |
           cat > backend/.env <<EOF
           APP_ENV=production
-          DATABASE_URL=postgresql://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}
+          DATABASE_URL=postgresql+psycopg2://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}
 
           AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
           AZURE_STORAGE_CONTAINER=${{ secrets.AZURE_STORAGE_CONTAINER }}
