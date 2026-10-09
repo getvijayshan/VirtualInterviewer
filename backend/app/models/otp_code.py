@@ -5,7 +5,7 @@ from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db import Base
+from app.db import Base, utcnow
 
 
 class OtpCode(Base):
@@ -21,6 +21,6 @@ class OtpCode(Base):
     expires_at: Mapped[datetime] = mapped_column()
     consumed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     candidate: Mapped["Candidate"] = relationship()

@@ -5,7 +5,7 @@ from sqlalchemy import JSON, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db import Base
+from app.db import Base, utcnow
 
 
 class Candidate(Base):
@@ -20,6 +20,6 @@ class Candidate(Base):
     # FL-06: set once the candidate verifies this phone number via OTP —
     # gates report access (see app/routers/auth.py).
     phone_verified_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     sessions: Mapped[list["InterviewSession"]] = relationship(back_populates="candidate")
