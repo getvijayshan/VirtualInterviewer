@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +9,16 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql://candidate_true_companion:candidate_true_companion@localhost:5432/candidate_true_companion"
+
+    @field_validator("database_url")
+    @classmethod
+    def _pin_psycopg2_driver(cls, v: str) -> str:
+        # SQLAlchemy 2.1 defaults a bare postgresql:// URL to psycopg (v3), but
+        # this app ships psycopg2-binary. Pin the driver whatever the source
+        # (.env, process env, default) so it can't drift with SQLAlchemy.
+        if v.startswith("postgresql://"):
+            return "postgresql+psycopg2://" + v[len("postgresql://"):]
+        return v
 
     # File storage (Azure Blob Storage — switched from S3, 2026-09-20, see
     # docs/Architecture-Decisions.md §4d)
