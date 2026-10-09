@@ -6,7 +6,7 @@ from sqlalchemy import Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db import Base
+from app.db import Base, utcnow
 
 
 class TurnRole(str, enum.Enum):
@@ -35,6 +35,6 @@ class TranscriptTurn(Base):
         Enum(TranscriptionProvider, name="transcription_provider"), nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     session: Mapped["InterviewSession"] = relationship(back_populates="transcript_turns")
