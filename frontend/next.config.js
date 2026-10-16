@@ -1,9 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // When API_PROXY_TARGET is set (e.g. http://<vm-ip>), /api/* is forwarded to
-  // the backend server-side. Set NEXT_PUBLIC_API_BASE_URL=/api so an HTTPS
-  // frontend (Vercel) can reach a plain-HTTP API without mixed-content or CORS.
+  // Self-contained server bundle (.next/standalone) so the VM only needs the
+  // Node runtime — it is built on the CI runner and copied over.
+  output: "standalone",
+  // Optional: forward /api/* to another backend (e.g. a hosted frontend talking
+  // to a plain-HTTP API). On the VM, Nginx does this instead.
   async rewrites() {
     const target = process.env.API_PROXY_TARGET;
     if (!target) return [];

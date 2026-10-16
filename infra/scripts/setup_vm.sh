@@ -3,6 +3,12 @@
 # dependency and deploy Candidate True Companion's backend + database.
 # See docs/Architecture-Decisions.md §10/§11.
 #
+# Optional env vars (from the workflow):
+#   DOMAIN_NAME          hostname for HTTPS, e.g. <label>.centralindia.cloudapp.azure.com
+#   LETSENCRYPT_EMAIL    contact address for Let's Encrypt (required with DOMAIN_NAME)
+# Without DOMAIN_NAME the site is served over plain HTTP only (the browser
+# will not allow microphone access on it).
+#
 # Assumes the CI pipeline has already copied, to this VM, under APP_DIR:
 #   backend/           (app code, including a real backend/.env with secrets)
 #   infra/              (docker-compose.yml + a real infra/.env with POSTGRES_PASSWORD)
@@ -23,6 +29,12 @@ sudo apt-get install -y --no-install-recommends \
   ca-certificates curl gnupg git \
   python3 python3-venv python3-pip \
   nginx
+
+echo "== Node.js (runs the Next.js frontend) =="
+if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+fi
 
 echo "== Docker =="
 if ! command -v docker >/dev/null 2>&1; then
@@ -55,21 +67,48 @@ fi
 echo "== Alembic migrations =="
 ./venv/bin/python -m alembic upgrade head
 
-echo "== systemd service =="
-sudo cp "$APP_DIR/infra/systemd/${SERVICE_NAME}.service" "/etc/systemd/system/${SERVICE_NAME}.service"
+echo "== systemd services =="
+for unit in candidate-true-companion-api candidate-true-companion-web; do
+  sudo cp "$APP_DIR/infra/systemd/${unit}.service" "/etc/systemd/system/${unit}.service"
+done
 sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+for unit in candidate-true-companion-api candidate-true-companion-web; do
+  sudo systemctl enable "$unit"
+  sudo systemctl restart "$unit"
+done
 
 echo "== Nginx reverse proxy =="
-sudo cp "$APP_DIR/infra/nginx/candidate-true-companion.conf" /etc/nginx/sites-available/candidate-true-companion.conf
-sudo ln -sf /etc/nginx/sites-available/candidate-true-companion.conf /etc/nginx/sites-enabled/candidate-true-companion.conf
+DOMAIN_NAME="${DOMAIN_NAME:-}"
+SERVER_NAME="${DOMAIN_NAME:-_}"
+NGINX_SRC="$APP_DIR/infra/nginx"
+sudo mkdir -p /etc/nginx/snippets /var/www/certbot
+sudo cp "$NGINX_SRC/candidate-true-companion-locations.conf" /etc/nginx/snippets/candidate-true-companion-locations.conf
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl enable nginx
-sudo systemctl restart nginx
+
+render_site() {  # $1 = template file
+  sed "s/__SERVER_NAME__/${SERVER_NAME}/g" "$NGINX_SRC/$1" | sudo tee /etc/nginx/sites-available/candidate-true-companion.conf >/dev/null
+  sudo ln -sf /etc/nginx/sites-available/candidate-true-companion.conf /etc/nginx/sites-enabled/candidate-true-companion.conf
+  sudo nginx -t
+  sudo systemctl enable nginx
+  sudo systemctl reload nginx 2>/dev/null || sudo systemctl restart nginx
+}
+
+if [ -n "$DOMAIN_NAME" ] && [ -f "/etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem" ]; then
+  echo "Certificate for ${DOMAIN_NAME} exists - serving HTTPS."
+  render_site candidate-true-companion-ssl.conf
+else
+  render_site candidate-true-companion.conf
+  if [ -n "$DOMAIN_NAME" ]; then
+    : "${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL is required with DOMAIN_NAME}"
+    echo "== Requesting a Let's Encrypt certificate for ${DOMAIN_NAME} =="
+    sudo certbot certonly --webroot -w /var/www/certbot -d "$DOMAIN_NAME"       --non-interactive --agree-tos -m "$LETSENCRYPT_EMAIL"       --deploy-hook "systemctl reload nginx"
+    render_site candidate-true-companion-ssl.conf
+  else
+    echo "No DOMAIN_NAME set - serving plain HTTP only (no microphone access in browsers)."
+  fi
+fi
 
 echo "== Service status =="
-sudo systemctl --no-pager status "$SERVICE_NAME" || true
+sudo systemctl --no-pager status "$SERVICE_NAME" candidate-true-companion-web || true
 
 echo "== Done =="
