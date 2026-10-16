@@ -11,6 +11,15 @@ class Settings(BaseSettings):
     # back to the local Next.js dev server.
     cors_allowed_origins: str = ""
 
+    # TEST MODE ONLY: return the OTP code in the API response (and show it in the
+    # UI) so the flow works without an SMS provider. Never enable in real use.
+    otp_echo_code: bool = False
+
+    @field_validator("otp_echo_code", mode="before")
+    @classmethod
+    def _blank_otp_echo_is_false(cls, v):
+        return False if v is None or (isinstance(v, str) and not v.strip()) else v
+
     @property
     def cors_origins(self) -> list[str]:
         origins = [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
