@@ -22,6 +22,8 @@
 #   VNET_NAME              vnet-centralindia-1       (172.16.0.0/16)
 #   SUBNET_NAME            snet-centralindia-1       (172.16.0.0/24)
 #   ALLOWED_SSH_SOURCE_IP  "*" (key-only auth); set a CIDR to lock it down
+#   DNS_LABEL              free Azure hostname label for the public IP, giving
+#                          <label>.<region>.cloudapp.azure.com (needed for HTTPS)
 
 set -euo pipefail
 
@@ -37,6 +39,7 @@ ADMIN_USERNAME="${ADMIN_USERNAME:-azureuser}"
 VNET_NAME="${VNET_NAME:-vnet-centralindia-1}"
 SUBNET_NAME="${SUBNET_NAME:-snet-centralindia-1}"
 ALLOWED_SSH_SOURCE_IP="${ALLOWED_SSH_SOURCE_IP:-*}"
+DNS_LABEL="${DNS_LABEL:-}"
 
 NSG_NAME="${VM_NAME}-nsg"
 PUBLIC_IP_NAME="${VM_NAME}-ip"
@@ -75,7 +78,7 @@ az network vnet create \
 echo "== Public IP: ${PUBLIC_IP_NAME} =="
 az network public-ip create \
   --resource-group "$RESOURCE_GROUP" --name "$PUBLIC_IP_NAME" --location "$LOCATION" \
-  --sku Standard --allocation-method Static --zone "$VM_ZONE" --output none
+  --sku Standard --allocation-method Static --zone "$VM_ZONE"   ${DNS_LABEL:+--dns-name "$DNS_LABEL"} --output none
 
 echo "== NIC: ${NIC_NAME} =="
 az network nic create \

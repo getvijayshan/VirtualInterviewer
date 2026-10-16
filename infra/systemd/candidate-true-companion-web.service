@@ -1,0 +1,17 @@
+[Unit]
+Description=Candidate True Companion Next.js frontend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/candidate-true-companion/frontend
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+# Runs as root for the same reason as the API unit (see its comment).
+
+[Install]
+WantedBy=multi-user.target

@@ -93,6 +93,9 @@ GitHub → repo **getvijayshan/VirtualInterviewer** → **Settings** → **Secre
 | `AZURE_OPENAI_DEPLOYMENT_INTERVIEW` | `gpt-5-mini-1` | yes |
 | `AZURE_OPENAI_DEPLOYMENT_REPORT` | `gpt-5-mini-1` | yes |
 | `DEEPGRAM_API_KEY` | From A6 | yes |
+| `DOMAIN_NAME` | Hostname for HTTPS, e.g. `ctc-interviewer.centralindia.cloudapp.azure.com` (see Part D) | for HTTPS |
+| `LETSENCRYPT_EMAIL` | Your email, for Let's Encrypt expiry notices | with `DOMAIN_NAME` |
+| `OTP_ECHO_CODE` | `true` shows the OTP on screen (test mode only) | no |
 | `HELICONE_BASE_URL` | Leave unset until Helicone is deployed | no |
 | `HELICONE_API_KEY` | Leave unset until Helicone is deployed | no |
 
@@ -142,3 +145,18 @@ curl -i http://<VM_PUBLIC_IP>/        # via Nginx
 - Only ports 22/80/443 are opened. Postgres and the API port stay internal (ADR §10).
 - HTTPS/TLS certificates are not covered by this setup. Port 443 is open, but you'll need a domain and a cert (e.g. Let's Encrypt) before using it.
 - Rotate `AZURE_CREDENTIALS` and the deploy key if they are ever pasted into chat, logs or a commit.
+
+---
+
+## Part D — Frontend on the VM with free HTTPS
+
+The UI is served from the same VM as the API (Nginx: `/` is the UI, `/api/` is the API). Browsers only allow microphone access on HTTPS, so set up a certificate:
+
+1. **Give the public IP a free DNS name.** Azure Portal -> the VM's public IP resource -> **Configuration** -> **DNS name label** (for example `ctc-interviewer`) -> Save. The hostname is `ctc-interviewer.centralindia.cloudapp.azure.com`. (For a fresh environment, set the repo variable `DNS_LABEL` instead and the provision script does it.)
+2. **Add two secrets:** `DOMAIN_NAME` (that hostname) and `LETSENCRYPT_EMAIL` (your email).
+3. **Ports 80 and 443 must be open** in the NSG (the HTTP rule must be port 80; Let's Encrypt validates over it).
+4. **Run the workflow** (deploy only). The first run builds the UI, installs Node and certbot on the VM, obtains the certificate and switches Nginx to HTTPS. Later runs reuse the certificate, and certbot renews it automatically.
+5. Open `https://<DOMAIN_NAME>/`.
+
+A self-signed certificate would also work but shows a browser warning to every visitor, so it is not recommended.
+
