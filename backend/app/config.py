@@ -7,6 +7,15 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
 
+    # Browser origins allowed to call the API (comma-separated). Empty falls
+    # back to the local Next.js dev server.
+    cors_allowed_origins: str = ""
+
+    @property
+    def cors_origins(self) -> list[str]:
+        origins = [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
+        return origins or ["http://localhost:3000"]
+
     # Database
     database_url: str = "postgresql://candidate_true_companion:candidate_true_companion@localhost:5432/candidate_true_companion"
 
