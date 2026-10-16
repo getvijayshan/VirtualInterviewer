@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # UI) so the flow works without an SMS provider. Never enable in real use.
     otp_echo_code: bool = False
 
+    # SMS delivery for OTPs: "fast2sms" sends a real text, "" only logs the code.
+    sms_provider: str = ""
+    fast2sms_api_key: str = ""
+
     @field_validator("otp_echo_code", mode="before")
     @classmethod
     def _blank_otp_echo_is_false(cls, v):

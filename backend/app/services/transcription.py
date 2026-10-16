@@ -7,10 +7,14 @@ loop) should call — swapping providers (Deepgram now, Azure AI Foundry
 planned, #11) means adding a branch here, not touching the interview loop.
 """
 
+import logging
+
 from deepgram import DeepgramClient
 from deepgram.core.api_error import ApiError
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class TranscriptionError(Exception):
@@ -39,7 +43,13 @@ def _transcribe_deepgram(audio_bytes: bytes) -> str:
 
     transcript = (transcript or "").strip()
     if not transcript:
-        raise TranscriptionError("Deepgram returned an empty transcript.")
+        duration = getattr(getattr(response, "metadata", None), "duration", None)
+        logger.warning("Empty transcript: %d bytes, duration=%s", len(audio_bytes), duration)
+        raise TranscriptionError(
+            "We didn't hear any speech in that recording "
+            f"({len(audio_bytes)} bytes, {duration or 0:.1f}s). "
+            "Check your microphone is not muted, speak for a few seconds, and try again."
+        )
     return transcript
 
 
