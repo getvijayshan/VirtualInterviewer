@@ -28,7 +28,7 @@ sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends \
   ca-certificates curl gnupg git \
   python3 python3-venv python3-pip \
-  nginx
+  nginx certbot
 
 echo "== Node.js (runs the Next.js frontend) =="
 if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20 ]; then
