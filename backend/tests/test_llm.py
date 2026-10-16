@@ -251,3 +251,28 @@ def test_extract_candidate_fields_wraps_openai_error(monkeypatch):
 
     with pytest.raises(llm.ExtractionError):
         llm.extract_candidate_fields("some resume text")
+
+
+def test_extract_candidate_fields_raises_extraction_error_on_truncated_json(monkeypatch):
+    truncated = SimpleNamespace(
+        function=SimpleNamespace(name="record_resume_fields", arguments='{"skills": ["a", "b')
+    )
+    FakeOpenAIClient.next_response = _fake_response(content=None, tool_calls=[truncated])
+    monkeypatch.setattr(llm.settings, "helicone_base_url", "")
+    monkeypatch.setattr(llm.settings, "helicone_api_key", "")
+
+    with pytest.raises(llm.ExtractionError):
+        llm.extract_candidate_fields("some resume text")
+
+
+def test_extract_candidate_fields_raises_extraction_error_when_output_hit_length_limit(monkeypatch):
+    response = _fake_response(
+        content=None, tool_calls=[_tool_call("record_resume_fields", {"name": "Jane"})]
+    )
+    response.choices[0].finish_reason = "length"
+    FakeOpenAIClient.next_response = response
+    monkeypatch.setattr(llm.settings, "helicone_base_url", "")
+    monkeypatch.setattr(llm.settings, "helicone_api_key", "")
+
+    with pytest.raises(llm.ExtractionError):
+        llm.extract_candidate_fields("some resume text")
