@@ -41,7 +41,10 @@ async def request_otp(payload: OtpRequestPayload, db: DBSession = Depends(get_db
     db.add(record)
     db.commit()
 
-    otp.send_otp(payload.phone, code)
+    try:
+        otp.send_otp(payload.phone, code)
+    except otp.SmsDeliveryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return OtpRequestResponse(
         expires_in_seconds=otp.OTP_TTL_MINUTES * 60,
