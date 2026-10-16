@@ -193,3 +193,14 @@ def test_verify_otp_uses_most_recently_requested_code(client, fake_db, candidate
 def test_verify_otp_404_for_unknown_candidate(client, fake_db):
     resp = client.post("/auth/otp/verify", json={"candidate_id": str(uuid.uuid4()), "code": "111111"})
     assert resp.status_code == 404
+
+
+def test_request_otp_returns_debug_code_when_echo_enabled_in_production(client, fake_db, candidate, monkeypatch):
+    monkeypatch.setattr(otp, "generate_code", lambda: "123456")
+    from app.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router.settings, "app_env", "production")
+    monkeypatch.setattr(auth_router.settings, "otp_echo_code", True)
+
+    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "phone": "+15551234567"})
+    assert resp.json()["debug_code"] == "123456"

@@ -45,7 +45,7 @@ async def request_otp(payload: OtpRequestPayload, db: DBSession = Depends(get_db
 
     return OtpRequestResponse(
         expires_in_seconds=otp.OTP_TTL_MINUTES * 60,
-        debug_code=code if settings.app_env == "development" else None,
+        debug_code=code if (settings.app_env == "development" or settings.otp_echo_code) else None,
     )
 
 

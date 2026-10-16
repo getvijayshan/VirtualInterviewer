@@ -1,0 +1,532 @@
+{
+  "info": {
+    "name": "Candidate True Companion API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Dummy requests for every endpoint. Run the folders in order. Set baseUrl first."
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Returns 200 when the API is up."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Resume (FL-01/02)",
+      "item": [
+        {
+          "name": "Upload resume",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/resumes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes"
+              ]
+            },
+            "description": "Pick a resume file in the form-data 'file' field. Saves candidate_id into {{candidateId}}. If needs_manual_entry is true, use the PATCH request below.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Choose a PDF or DOCX resume"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.candidate_id) { pm.collectionVariables.set('candidateId', j.candidate_id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get candidate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{candidateId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes",
+                "{{candidateId}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "Confirm / edit parsed resume",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{candidateId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "resumes",
+                "{{candidateId}}"
+              ]
+            },
+            "description": "name and email are required (422 otherwise).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.com\",\n  \"phone\": \"+919999999999\",\n  \"skills\": [\n    \"Python\",\n    \"FastAPI\",\n    \"PostgreSQL\"\n  ],\n  \"experience\": [\n    {\n      \"company\": \"Acme Corp\",\n      \"role\": \"Backend Engineer\",\n      \"start_date\": \"2022-01\",\n      \"end_date\": \"2024-06\",\n      \"summary\": \"Built REST APIs.\"\n    }\n  ],\n  \"education\": [\n    {\n      \"institution\": \"Example University\",\n      \"degree\": \"B.Tech Computer Science\",\n      \"year\": \"2021\"\n    }\n  ],\n  \"projects\": [\n    {\n      \"name\": \"Interview Prep Bot\",\n      \"summary\": \"Mock interview app.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Session setup (FL-03/04)",
+      "item": [
+        {
+          "name": "Target options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/target-options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "target-options"
+              ]
+            },
+            "description": "Allowed roles and topics."
+          }
+        },
+        {
+          "name": "Create session - by role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions"
+              ]
+            },
+            "description": "Roles: Backend Engineer, Frontend Engineer, Data Analyst, Product Manager. Saves the session id into {{sessionId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate_id\": \"{{candidateId}}\",\n  \"target_type\": \"role\",\n  \"target_role\": \"Backend Engineer\",\n  \"consent\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.id) { pm.collectionVariables.set('sessionId', j.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create session - by topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions"
+              ]
+            },
+            "description": "Topics: data_structures, algorithms, system_design, ai_ml.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate_id\": \"{{candidateId}}\",\n  \"target_type\": \"topic\",\n  \"target_topic\": \"system_design\",\n  \"consent\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.id) { pm.collectionVariables.set('sessionId', j.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create session - by job description",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate_id\": \"{{candidateId}}\",\n  \"target_type\": \"jd\",\n  \"jd_text\": \"We are hiring a Backend Engineer with Python, FastAPI and PostgreSQL experience to build scalable APIs.\",\n  \"consent\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.id) { pm.collectionVariables.set('sessionId', j.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/{{sessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "{{sessionId}}"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Interview (FL-05)",
+      "item": [
+        {
+          "name": "Start interview",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/{{sessionId}}/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "{{sessionId}}",
+                "start"
+              ]
+            },
+            "description": "Returns the first question."
+          }
+        },
+        {
+          "name": "Submit answer (audio)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/{{sessionId}}/turns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "{{sessionId}}",
+                "turns"
+              ]
+            },
+            "description": "Upload an audio answer; the response contains the next question.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "audio",
+                  "type": "file",
+                  "src": [],
+                  "description": "Choose a recorded answer, e.g. .webm / .wav / .mp3"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get transcript",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/{{sessionId}}/transcript",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "{{sessionId}}",
+                "transcript"
+              ]
+            },
+            "description": "Also used to resume after a refresh."
+          }
+        },
+        {
+          "name": "End interview",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/{{sessionId}}/end",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "{{sessionId}}",
+                "end"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Phone verification (FL-06)",
+      "item": [
+        {
+          "name": "Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            },
+            "description": "debug_code is returned only when APP_ENV=development; in production read the code from the API log.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate_id\": \"{{candidateId}}\",\n  \"phone\": \"+919999999999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.debug_code) { pm.collectionVariables.set('otpCode', j.debug_code); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "verify"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"candidate_id\": \"{{candidateId}}\",\n  \"code\": \"{{otpCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Report (FL-07)",
+      "item": [
+        {
+          "name": "Generate report",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/{{sessionId}}/report",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "{{sessionId}}",
+                "report"
+              ]
+            },
+            "description": "Requires a completed session and a verified phone."
+          }
+        },
+        {
+          "name": "Get report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sessions/{{sessionId}}/report",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sessions",
+                "{{sessionId}}",
+                "report"
+              ]
+            },
+            "description": ""
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "candidateId",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "otpCode",
+      "value": ""
+    }
+  ]
+}

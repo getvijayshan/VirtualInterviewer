@@ -19,6 +19,7 @@ export default function AuthGatePage() {
 
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
+  const [testCode, setTestCode] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -56,6 +57,8 @@ export default function AuthGatePage() {
         const body = await res.json().catch(() => null);
         throw new Error(body?.detail ?? `Could not send code (${res.status}).`);
       }
+      const sent = await res.json().catch(() => null);
+      setTestCode(sent?.debug_code ?? null);
       setCode("");
       setStep("code");
     } catch (err) {
@@ -141,6 +144,7 @@ export default function AuthGatePage() {
       <p className={styles.eyebrow}>One more step</p>
       <h1 className={styles.title}>Enter your code</h1>
       <p className={styles.sub}>We sent a 6-digit code to {phone}.</p>
+      {testCode && <p className={styles.hint}>Test mode: your code is {testCode}</p>}
 
       {formError && <p className={styles.errorText}>{formError}</p>}
 

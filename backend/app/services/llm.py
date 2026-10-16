@@ -164,7 +164,8 @@ _RESUME_FIELDS_TOOL = {
 _RESUME_EXTRACTION_SYSTEM_PROMPT = (
     "You extract structured fields from resume text. Only use information present "
     "in the text — never invent employers, dates, or skills. Leave a field empty "
-    "(omit it, or use an empty string/array) rather than guessing."
+    "(omit it, or use an empty string/array) rather than guessing. Keep every "
+    "experience and project summary to one or two short sentences."
 )
 
 
@@ -180,7 +181,7 @@ def extract_candidate_fields(resume_text: str) -> dict:
             model=settings.azure_openai_deployment_extraction,
             system=_RESUME_EXTRACTION_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": resume_text}],
-            max_completion_tokens=2048,
+            max_completion_tokens=4096,
             call_type="resume_extraction",
             tools=[_RESUME_FIELDS_TOOL],
             tool_choice={"type": "function", "function": {"name": "record_resume_fields"}},
@@ -188,9 +189,17 @@ def extract_candidate_fields(resume_text: str) -> dict:
     except openai.OpenAIError as exc:
         raise ExtractionError(f"Azure OpenAI error: {exc}") from exc
 
-    message = response.choices[0].message
-    for tool_call in message.tool_calls or []:
+    choice = response.choices[0]
+    if getattr(choice, "finish_reason", None) == "length":
+        raise ExtractionError("Model output was cut off at the token limit.")
+
+    for tool_call in choice.message.tool_calls or []:
         if tool_call.function.name == "record_resume_fields":
-            return json.loads(tool_call.function.arguments)
+            try:
+                return json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError as exc:
+                # Truncated/malformed tool arguments must route to manual entry
+                # (FL-01.5), not surface as a 500.
+                raise ExtractionError(f"Model returned invalid JSON: {exc}") from exc
 
     raise ExtractionError("Model response did not include the expected tool call.")
