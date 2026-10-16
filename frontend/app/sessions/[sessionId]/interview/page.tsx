@@ -30,6 +30,24 @@ function formatTime(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function describeMicError(err: unknown): string {
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    return "Microphone needs a secure (https) connection. Open this page over https and try again.";
+  }
+  const name = err instanceof DOMException ? err.name : "";
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Microphone access is blocked — allow it for this site in your browser's address-bar settings, then try again.";
+    case "NotFoundError":
+      return "No microphone found — connect one and try again.";
+    case "NotReadableError":
+      return "Your microphone is in use by another app — close it and try again.";
+    default:
+      return `Couldn't start recording${name ? ` (${name})` : ""} — check your microphone and browser permissions.`;
+  }
+}
+
 export default function InterviewPage() {
   const params = useParams<{ sessionId: string }>();
   const router = useRouter();
@@ -118,8 +136,8 @@ export default function InterviewPage() {
       mediaRecorderRef.current = recorder;
       recorder.start();
       setRecording(true);
-    } catch {
-      setMicError("Couldn't access your microphone — check browser permissions and try again.");
+    } catch (err) {
+      setMicError(describeMicError(err));
     }
   }
 
