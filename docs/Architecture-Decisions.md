@@ -214,3 +214,8 @@ Repo: `https://github.com/getvijayshan/VirtualInterviewer`. **Git-flow** branchi
 - **Secrets**: `backend/.env` and `infra/.env` are generated on the runner from GitHub Actions secrets and copied to the VM — never committed, never baked into the scripts. See the secrets list documented as a comment at the top of `deploy-vm.yml`.
 - **Auth to Azure**: `azure/login` with an `AZURE_CREDENTIALS` service-principal secret (simplest to set up for now). Revisit OIDC federated credentials (no long-lived secret) if this pipeline gets used often enough to matter.
 - **Not yet verified**: no Azure subscription/credentials available in this environment to actually run the pipeline — scripts are written and pass `bash -n`/YAML syntax checks, but have not provisioned a real VM or exercised a real deploy. Bundle that verification with **#14**.
+
+### Frontend integration (2026-10-16, user-directed)
+- **Hosting**: frontend on Vercel (HTTPS). The API is plain HTTP on the VM's IP (no domain/cert yet), which an HTTPS page cannot call directly (mixed content), so Next.js rewrites `/api/*` to `API_PROXY_TARGET` (the VM) server-side and the frontend uses `NEXT_PUBLIC_API_BASE_URL=/api`. This also avoids CORS. The API still has CORS (`CORS_ALLOWED_ORIGINS`, default `http://localhost:3000`) for direct local-dev calls. Revisit with a real domain + TLS on the VM.
+- **OTP test mode**: no SMS provider yet, so `OTP_ECHO_CODE=true` makes `/auth/otp/request` return the code and the auth screen displays it. Test-only, not secure; replace with a real provider before any real users.
+

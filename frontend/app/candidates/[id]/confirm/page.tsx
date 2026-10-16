@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import styles from "./confirm.module.css";
 
 type ExperienceEntry = {
@@ -44,6 +44,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ConfirmResumePage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const candidateId = params.id;
 
   const [loading, setLoading] = useState(true);
@@ -143,6 +144,7 @@ export default function ConfirmResumePage() {
         throw new Error(body?.detail ? JSON.stringify(body.detail) : `Save failed (${res.status}).`);
       }
       setSaved(true);
+      router.push(`/candidates/${candidateId}/session/target`);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -354,7 +356,7 @@ export default function ConfirmResumePage() {
       <div className={styles.actions}>
         {saveError && <p className={styles.statusTextError}>{saveError}</p>}
         {saved ? (
-          <p className={styles.statusText}>Saved. Next: target role (coming soon).</p>
+          <p className={styles.statusText}>Saved. Taking you to the next step…</p>
         ) : (
           <button className={styles.saveButton} onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Looks good, continue"}

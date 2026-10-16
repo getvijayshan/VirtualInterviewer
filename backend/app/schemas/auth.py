@@ -18,7 +18,7 @@ class OtpRequestPayload(BaseModel):
 class OtpRequestResponse(BaseModel):
     expires_in_seconds: int
     # Dev-only convenience so this is testable without a real SMS provider —
-    # never populated outside settings.app_env == "development".
+    # only populated when settings.app_env == "development" or settings.otp_echo_code (test mode).
     debug_code: str | None = None
 
 

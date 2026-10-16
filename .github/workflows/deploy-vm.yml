@@ -21,6 +21,8 @@ name: Provision & Deploy Azure VM
 #   AZURE_OPENAI_API_KEY
 #   AZURE_OPENAI_DEPLOYMENT_EXTRACTION / _INTERVIEW / _REPORT
 #   DEEPGRAM_API_KEY
+#   OTP_ECHO_CODE                    optional; "true" shows the OTP code in the UI (TEST MODE, no SMS provider)
+#   CORS_ALLOWED_ORIGINS             optional; comma-separated browser origins (frontend URL) allowed to call the API
 #   HELICONE_BASE_URL / HELICONE_API_KEY   optional; leave unset to call Azure OpenAI directly
 on:
   workflow_dispatch:
@@ -122,6 +124,8 @@ jobs:
         run: |
           cat > backend/.env <<EOF
           APP_ENV=production
+          CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
+          OTP_ECHO_CODE=${{ secrets.OTP_ECHO_CODE }}
           DATABASE_URL=postgresql+psycopg2://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/${{ secrets.POSTGRES_DB }}
 
           AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}

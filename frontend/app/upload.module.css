@@ -1,0 +1,90 @@
+.page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 56px 24px 80px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.sub {
+  color: var(--text-soft);
+  font-size: 14px;
+  margin: 0 0 28px;
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 36px 16px;
+  border: 1.5px dashed var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: center;
+}
+
+.drop:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.dropText {
+  font-weight: 600;
+  font-size: 15px;
+  word-break: break-all;
+}
+
+.dropHint {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.errorText {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--alert);
+}
+
+.uploadButton {
+  width: 100%;
+  margin-top: 22px;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  background: var(--cta-bg);
+  color: var(--cta-text);
+  cursor: pointer;
+}
+
+.uploadButton:disabled {
+  background: var(--border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
