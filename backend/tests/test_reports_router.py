@@ -59,13 +59,13 @@ class FakeDB:
 @pytest.fixture
 def verified_candidate():
     return Candidate(
-        id=uuid.uuid4(), name="Jane", email="jane@example.com", phone_verified_at=datetime.now(timezone.utc)
+        id=uuid.uuid4(), name="Jane", email="jane@example.com", verified_at=datetime.now(timezone.utc)
     )
 
 
 @pytest.fixture
 def unverified_candidate():
-    return Candidate(id=uuid.uuid4(), name="Joe", email="joe@example.com", phone_verified_at=None)
+    return Candidate(id=uuid.uuid4(), name="Joe", email="joe@example.com", verified_at=None)
 
 
 @pytest.fixture
