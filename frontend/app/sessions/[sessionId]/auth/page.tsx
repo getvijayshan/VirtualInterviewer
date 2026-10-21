@@ -6,7 +6,9 @@ import styles from "./auth.module.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-type Step = "loading" | "phone" | "code" | "error";
+type Step = "loading" | "choose" | "code";
+
+const PROVIDER_LABELS: Record<string, string> = { google: "Google", linkedin: "LinkedIn" };
 
 export default function AuthGatePage() {
   const params = useParams<{ sessionId: string }>();
@@ -17,7 +19,8 @@ export default function AuthGatePage() {
   const [candidateId, setCandidateId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [providers, setProviders] = useState<string[]>([]);
   const [code, setCode] = useState("");
   const [testCode, setTestCode] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -30,10 +33,20 @@ export default function AuthGatePage() {
         if (!res.ok) throw new Error(`Could not load session (${res.status}).`);
         return res.json();
       })
-      .then((data) => {
+      .then(async (data) => {
+        // Prefill from the resume, and learn which OAuth buttons are enabled.
+        const [candidate, methods] = await Promise.all([
+          fetch(`${API_BASE}/resumes/${data.candidate_id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch(`${API_BASE}/auth/methods`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
         if (cancelled) return;
         setCandidateId(data.candidate_id);
-        setStep("phone");
+        setEmail(candidate?.email ?? "");
+        setProviders(methods?.oauth_providers ?? []);
+        // The OAuth callback sends failures back here as ?error=...
+        const oauthError = new URLSearchParams(window.location.search).get("error");
+        if (oauthError) setFormError(oauthError);
+        setStep("choose");
       })
       .catch((err) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Failed to load session.");
@@ -44,14 +57,14 @@ export default function AuthGatePage() {
   }, [sessionId]);
 
   async function handleSendCode() {
-    if (!candidateId || !phone.trim()) return;
+    if (!candidateId || !email.trim()) return;
     setSubmitting(true);
     setFormError(null);
     try {
       const res = await fetch(`${API_BASE}/auth/otp/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidate_id: candidateId, phone: phone.trim() }),
+        body: JSON.stringify({ candidate_id: candidateId, email: email.trim() }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -64,6 +77,23 @@ export default function AuthGatePage() {
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Could not send code.");
     } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleOAuth(provider: string) {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_BASE}/auth/oauth/${provider}/start?session_id=${sessionId}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ?? `Could not start sign-in (${res.status}).`);
+      }
+      const { authorize_url } = await res.json();
+      window.location.href = authorize_url;
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Could not start sign-in.");
       setSubmitting(false);
     }
   }
@@ -107,23 +137,37 @@ export default function AuthGatePage() {
     );
   }
 
-  if (step === "phone") {
+  if (step === "choose") {
     return (
       <main className={styles.page}>
         <p className={styles.eyebrow}>One more step</p>
         <h1 className={styles.title}>Verify it&apos;s you</h1>
-        <p className={styles.sub}>We&apos;ll text you a 6-digit code before showing your results.</p>
+        <p className={styles.sub}>Sign in to see your results.</p>
 
         {formError && <p className={styles.errorText}>{formError}</p>}
+
+        {providers.map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={styles.oauthButton}
+            onClick={() => handleOAuth(p)}
+            disabled={submitting}
+          >
+            Continue with {PROVIDER_LABELS[p] ?? p}
+          </button>
+        ))}
+
+        {providers.length > 0 && <p className={styles.divider}>or use your email</p>}
 
         <div className={styles.field}>
           <input
             className={styles.input}
             style={{ textAlign: "left", fontFamily: "var(--font-sans)", letterSpacing: "normal" }}
-            type="tel"
-            placeholder="Phone number"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
         </div>
 
@@ -131,9 +175,9 @@ export default function AuthGatePage() {
           type="button"
           className={styles.primaryButton}
           onClick={handleSendCode}
-          disabled={submitting || !phone.trim()}
+          disabled={submitting || !email.trim()}
         >
-          {submitting ? "Sending…" : "Send code"}
+          {submitting ? "Sending…" : "Email me a code"}
         </button>
       </main>
     );
@@ -143,7 +187,7 @@ export default function AuthGatePage() {
     <main className={styles.page}>
       <p className={styles.eyebrow}>One more step</p>
       <h1 className={styles.title}>Enter your code</h1>
-      <p className={styles.sub}>We sent a 6-digit code to {phone}.</p>
+      <p className={styles.sub}>We emailed a 6-digit code to {email}.</p>
       {testCode && <p className={styles.hint}>Test mode: your code is {testCode}</p>}
 
       {formError && <p className={styles.errorText}>{formError}</p>}
@@ -166,7 +210,7 @@ export default function AuthGatePage() {
       <p className={styles.hint}>Code expires in 5 minutes.</p>
 
       <div className={styles.secondaryLink}>
-        <button type="button" onClick={() => setStep("phone")}>
+        <button type="button" onClick={() => setStep("choose")}>
           Didn&apos;t get it? Request a new code
         </button>
       </div>

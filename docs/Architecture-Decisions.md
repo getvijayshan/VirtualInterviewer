@@ -86,11 +86,15 @@ The candidate's answer audio is transcribed via `app/services/transcription.py` 
 - Track transcription latency and cost the same way as LLM calls — tag with `session_id` in Helicone (or log alongside it) so per-session cost includes STT, not just Claude usage.
 - Recording UX: tap-to-record / tap-to-stop (not push-to-talk), waveform + elapsed-time feedback while recording, "Transcribing…" state before the answer appears in the transcript. See `design/` prototype for the reference interaction.
 
-## 4b. Auth Gate (OTP)
+## 4b. Auth Gate (email OTP, Google, LinkedIn)
 
-**Implemented (2026-09-02, #9)**: `POST /auth/otp/request` / `POST /auth/otp/verify` in `backend/app/routers/auth.py`. A 6-digit code (hashed with SHA-256 before storage, compared with `hmac.compare_digest`), 5-minute TTL, single-use, capped at 5 verify attempts per code — the most recently requested code is the only one that's valid, so requesting a new one silently invalidates the last (FL-06.2/.3). Success sets `candidates.phone_verified_at` (FL-06.4); the interview screen redirects here the moment a session ends, before any report content renders (FL-06.1).
+**Decision (2026-10-18, user-directed)**: the SMS/Fast2SMS OTP is removed. The auth gate (FL-06) now offers three ways to prove identity before the report is shown; any one sets `candidates.verified_at` + `auth_provider` (`email` | `google` | `linkedin`), and `reports.py` enforces it server-side.
 
-**SMS delivery**: Fast2SMS (India-focused, 10-digit Indian mobiles only), via its `otp` route, selected with `SMS_PROVIDER=fast2sms` + `FAST2SMS_API_KEY`. `send_otp()` raises `SmsDeliveryError` on provider failure and the endpoint returns 502 so the user can retry. With `SMS_PROVIDER` unset it only logs the code, and `debug_code` is echoed only when `APP_ENV=development` or `OTP_ECHO_CODE=true`. The `otp` route needs no DLT template but uses Fast2SMS's default message text; custom wording needs DLT registration.
+- **Email OTP**: `POST /auth/otp/request` (`candidate_id`, `email`) / `POST /auth/otp/verify`. Same mechanics as before (6-digit code, SHA-256 hashed, 5-minute TTL, single-use, 5 attempts, only the latest code is valid — FL-06.2/.3). Delivery is SMTP with STARTTLS (`SMTP_HOST/PORT/USERNAME/PASSWORD/FROM`); `send_otp()` raises `EmailDeliveryError` -> 502. With `SMTP_HOST` unset it only logs the code, and `debug_code` is echoed only when `APP_ENV=development` or `OTP_ECHO_CODE=true`. The gate prefills the resume email; the address used is saved to `candidates.email`.
+- **Google / LinkedIn**: backend-orchestrated authorization-code flow in `app/services/oauth.py`. `GET /auth/oauth/{provider}/start?session_id=` returns the provider URL; the provider redirects to `GET /auth/oauth/{provider}/callback`, which exchanges the code, reads the OIDC userinfo, **requires `email_verified`**, marks the candidate verified, and redirects the browser to the report (or back to the gate with `?error=`). `state` is an HMAC-signed (`AUTH_SECRET`), 10-minute token carrying provider + session id — no server-side storage. LinkedIn uses "Sign In with LinkedIn using OpenID Connect" (`openid profile email`). `GET /auth/methods` tells the gate which buttons to show: a provider is enabled only when its `*_CLIENT_ID` + `*_CLIENT_SECRET` and `AUTH_SECRET` are set. Redirect URI to register with each provider: `<API_PUBLIC_URL>/auth/oauth/<provider>/callback` (prod: `https://<domain>/api/...`).
+- The OAuth email is not required to match the resume email (identity is the proof, not the address); it only fills `candidates.email` when that is blank.
+- **Schema**: migration `0005` renames `phone_verified_at` -> `verified_at`, adds `auth_provider` (existing verified rows are tagged `sms`), renames `otp_codes.phone` -> `email` and drops in-flight codes. `candidates.phone` stays as an ordinary resume contact field.
+- **Not yet exercised**: no real SMTP server or Google/LinkedIn OAuth app has been tried end-to-end — covered by unit tests with the network mocked.
 
 ## 4d. File Storage Migration (Azure Blob Storage)
 
@@ -120,7 +124,8 @@ candidates
   name
   email
   phone
-  phone_verified_at        -- set on successful OTP verify (FL-06.4)
+  verified_at              -- set on successful email-OTP / Google / LinkedIn verification (FL-06.4)
+  auth_provider            -- "email" | "google" | "linkedin" (legacy rows: "sms")
   resume_file_url
   resume_parsed_json      -- structured extraction: skills, experience, education, projects
   created_at
@@ -128,7 +133,7 @@ candidates
 otp_codes
   id (pk)
   candidate_id (fk -> candidates)
-  phone                    -- number this code was sent to (may differ from candidates.phone if changed at the auth gate)
+  email                    -- address this code was sent to (may differ from candidates.email if changed at the auth gate)
   code_hash                -- SHA-256, never the raw code
   expires_at
   consumed_at
@@ -218,4 +223,4 @@ Repo: `https://github.com/getvijayshan/VirtualInterviewer`. **Git-flow** branchi
 ### Frontend integration (2026-10-16, user-directed; hosting revised same day)
 - **Hosting (revised)**: the frontend now runs **on the same VM** (Next.js `output: "standalone"` built on the CI runner, run by `candidate-true-companion-web.service` on 127.0.0.1:3000). Nginx serves UI and API from one origin: `/` -> Next.js, `/api/*` -> FastAPI (prefix stripped), `client_max_body_size 25m`, 120s read timeout. The frontend is built with `NEXT_PUBLIC_API_BASE_URL=/api`, so no CORS and no mixed content. This replaces the earlier Vercel + rewrite plan (the `API_PROXY_TARGET` rewrite stays available but is unused).
 - **HTTPS**: browsers only allow microphone capture on HTTPS or localhost, so TLS is required. Free route: give the VM's public IP an Azure DNS label (`<label>.centralindia.cloudapp.azure.com`, free) and let `setup_vm.sh` obtain a **Let's Encrypt** certificate with certbot (webroot challenge on port 80; auto-renew timer + nginx reload hook). Driven by the optional `DOMAIN_NAME` / `LETSENCRYPT_EMAIL` secrets; without `DOMAIN_NAME` the site is HTTP-only.
-- **OTP test mode**: no SMS provider yet, so `OTP_ECHO_CODE=true` makes `/auth/otp/request` return the code and the auth screen displays it. Test-only, not secure; set `SMS_PROVIDER=fast2sms` and unset `OTP_ECHO_CODE` before any real users.
+- **OTP test mode**: with no SMTP server configured, `OTP_ECHO_CODE=true` makes `/auth/otp/request` return the code and the auth screen displays it. Test-only, not secure; set `SMTP_HOST` (and friends) and unset `OTP_ECHO_CODE` before any real users. OAuth needs `AUTH_SECRET`, the provider client id/secret, and `DOMAIN_NAME` (the workflow derives `API_PUBLIC_URL`/`FRONTEND_PUBLIC_URL` from it).

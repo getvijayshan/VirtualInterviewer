@@ -25,12 +25,12 @@ def _get_session_or_404(db: DBSession, session_id: uuid.UUID) -> InterviewSessio
 
 def _require_verified_candidate(db: DBSession, session: InterviewSession) -> Candidate:
     """FL-06: the report is auth-gated, not just the frontend route to it —
-    enforce phone verification here too, not only client-side."""
+    enforce verification here too, not only client-side."""
     candidate = db.get(Candidate, session.candidate_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found.")
-    if candidate.phone_verified_at is None:
-        raise HTTPException(status_code=403, detail="Verify your phone before viewing the report.")
+    if candidate.verified_at is None:
+        raise HTTPException(status_code=403, detail="Verify your identity before viewing the report.")
     return candidate
 
 
@@ -54,7 +54,7 @@ def _to_response(report: Report) -> ReportResponse:
 async def generate_report(session_id: uuid.UUID, db: DBSession = Depends(get_db)):
     """FL-07: single Claude call over the full transcript -> scorecard + feedback,
     persisted so it's re-viewable without regenerating (FL-07.6). Gated behind
-    OTP auth (FL-06)."""
+    auth (FL-06)."""
     session = _get_session_or_404(db, session_id)
     candidate = _require_verified_candidate(db, session)
 

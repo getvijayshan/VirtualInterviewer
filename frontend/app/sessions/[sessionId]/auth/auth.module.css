@@ -101,3 +101,29 @@
   font-size: 13px;
   color: var(--text-soft);
 }
+
+.oauthButton {
+  width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.oauthButton:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.divider {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  margin: 18px 0;
+}

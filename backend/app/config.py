@@ -12,17 +12,40 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = ""
 
     # TEST MODE ONLY: return the OTP code in the API response (and show it in the
-    # UI) so the flow works without an SMS provider. Never enable in real use.
+    # UI) so the flow works without an SMTP server. Never enable in real use.
     otp_echo_code: bool = False
 
-    # SMS delivery for OTPs: "fast2sms" sends a real text, "" only logs the code.
-    sms_provider: str = ""
-    fast2sms_api_key: str = ""
+    # Email delivery for OTPs over SMTP (STARTTLS). Empty smtp_host = only log the code.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # defaults to smtp_username
+
+    # OAuth sign-in (Google, LinkedIn "Sign In with LinkedIn using OpenID Connect").
+    # A provider is enabled when both its client id and secret are set.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    linkedin_client_id: str = ""
+    linkedin_client_secret: str = ""
+    # Signs the OAuth `state` parameter. Required for OAuth sign-in.
+    auth_secret: str = ""
+    # Public URL of the API as the browser sees it (the OAuth redirect URI is
+    # <api_public_url>/auth/oauth/<provider>/callback — register that with the
+    # provider) and of the frontend (where the callback sends the user back to).
+    api_public_url: str = "http://localhost:8000"
+    frontend_public_url: str = "http://localhost:3000"
 
     @field_validator("otp_echo_code", mode="before")
     @classmethod
     def _blank_otp_echo_is_false(cls, v):
         return False if v is None or (isinstance(v, str) and not v.strip()) else v
+
+    @field_validator("smtp_port", mode="before")
+    @classmethod
+    def _blank_smtp_port_is_default(cls, v):
+        # The deploy workflow writes unset optional secrets as empty strings.
+        return 587 if v is None or (isinstance(v, str) and not v.strip()) else v
 
     @property
     def cors_origins(self) -> list[str]:

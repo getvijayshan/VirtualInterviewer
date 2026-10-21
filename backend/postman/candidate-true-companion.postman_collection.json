@@ -111,7 +111,7 @@
             "description": "name and email are required (422 otherwise).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.com\",\n  \"phone\": \"+919999999999\",\n  \"skills\": [\n    \"Python\",\n    \"FastAPI\",\n    \"PostgreSQL\"\n  ],\n  \"experience\": [\n    {\n      \"company\": \"Acme Corp\",\n      \"role\": \"Backend Engineer\",\n      \"start_date\": \"2022-01\",\n      \"end_date\": \"2024-06\",\n      \"summary\": \"Built REST APIs.\"\n    }\n  ],\n  \"education\": [\n    {\n      \"institution\": \"Example University\",\n      \"degree\": \"B.Tech Computer Science\",\n      \"year\": \"2021\"\n    }\n  ],\n  \"projects\": [\n    {\n      \"name\": \"Interview Prep Bot\",\n      \"summary\": \"Mock interview app.\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.com\",\n  \"email\": \"jane@example.com\",\n  \"skills\": [\n    \"Python\",\n    \"FastAPI\",\n    \"PostgreSQL\"\n  ],\n  \"experience\": [\n    {\n      \"company\": \"Acme Corp\",\n      \"role\": \"Backend Engineer\",\n      \"start_date\": \"2022-01\",\n      \"end_date\": \"2024-06\",\n      \"summary\": \"Built REST APIs.\"\n    }\n  ],\n  \"education\": [\n    {\n      \"institution\": \"Example University\",\n      \"degree\": \"B.Tech Computer Science\",\n      \"year\": \"2021\"\n    }\n  ],\n  \"projects\": [\n    {\n      \"name\": \"Interview Prep Bot\",\n      \"summary\": \"Mock interview app.\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -385,7 +385,7 @@
       ]
     },
     {
-      "name": "4. Phone verification (FL-06)",
+      "name": "4. Email verification (FL-06)",
       "item": [
         {
           "name": "Request OTP",
@@ -411,7 +411,7 @@
             "description": "debug_code is returned only when APP_ENV=development; in production read the code from the API log.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"candidate_id\": \"{{candidateId}}\",\n  \"phone\": \"+919999999999\"\n}",
+              "raw": "{\n  \"candidate_id\": \"{{candidateId}}\",\n  \"email\": \"jane@example.com\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

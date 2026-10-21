@@ -66,8 +66,8 @@ def client():
 def capture_sent_otp(monkeypatch):
     sent = {}
 
-    def _fake_send(phone, code):
-        sent["phone"] = phone
+    def _fake_send(email, code):
+        sent["email"] = email
         sent["code"] = code
 
     monkeypatch.setattr(otp, "send_otp", _fake_send)
@@ -77,14 +77,14 @@ def capture_sent_otp(monkeypatch):
 def test_request_otp_persists_record_and_sends_it(client, fake_db, candidate, capture_sent_otp, monkeypatch):
     monkeypatch.setattr(otp, "generate_code", lambda: "123456")
 
-    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "phone": "+15551234567"})
+    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "email": "jane@example.com"})
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["expires_in_seconds"] == otp.OTP_TTL_MINUTES * 60
-    assert capture_sent_otp["phone"] == "+15551234567"
+    assert capture_sent_otp["email"] == "jane@example.com"
     assert capture_sent_otp["code"] == "123456"
-    assert candidate.phone == "+15551234567"
+    assert candidate.email == "jane@example.com"
 
     records = [o for o in fake_db.added if isinstance(o, OtpCode)]
     assert len(records) == 1
@@ -97,7 +97,7 @@ def test_request_otp_returns_debug_code_in_development(client, fake_db, candidat
 
     monkeypatch.setattr(auth_router.settings, "app_env", "development")
 
-    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "phone": "+15551234567"})
+    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "email": "jane@example.com"})
     assert resp.json()["debug_code"] == "654321"
 
 
@@ -106,17 +106,17 @@ def test_request_otp_omits_debug_code_outside_development(client, fake_db, candi
 
     monkeypatch.setattr(auth_router.settings, "app_env", "production")
 
-    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "phone": "+15551234567"})
+    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "email": "jane@example.com"})
     assert resp.json()["debug_code"] is None
 
 
 def test_request_otp_404_for_unknown_candidate(client, fake_db):
-    resp = client.post("/auth/otp/request", json={"candidate_id": str(uuid.uuid4()), "phone": "+15551234567"})
+    resp = client.post("/auth/otp/request", json={"candidate_id": str(uuid.uuid4()), "email": "jane@example.com"})
     assert resp.status_code == 404
 
 
-def test_request_otp_rejects_blank_phone(client, fake_db, candidate):
-    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "phone": "   "})
+def test_request_otp_rejects_invalid_email(client, fake_db, candidate):
+    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "email": "not-an-email"})
     assert resp.status_code == 422
 
 
@@ -124,7 +124,7 @@ def _seed_otp(db: FakeDB, candidate: Candidate, code: str, *, expired=False, con
     record = OtpCode(
         id=uuid.uuid4(),
         candidate_id=candidate.id,
-        phone="+15551234567",
+        email="jane@example.com",
         code_hash=otp.hash_code(code),
         expires_at=datetime.now(timezone.utc) + (timedelta(minutes=-1) if expired else timedelta(minutes=5)),
         consumed_at=datetime.now(timezone.utc) if consumed else None,
@@ -141,7 +141,7 @@ def test_verify_otp_succeeds_with_correct_code(client, fake_db, candidate):
     assert resp.status_code == 200
     body = resp.json()
     assert body["verified"] is True
-    assert candidate.phone_verified_at is not None
+    assert candidate.verified_at is not None
 
 
 def test_verify_otp_rejects_incorrect_code_and_increments_attempts(client, fake_db, candidate):
@@ -149,7 +149,7 @@ def test_verify_otp_rejects_incorrect_code_and_increments_attempts(client, fake_
     resp = client.post("/auth/otp/verify", json={"candidate_id": str(candidate.id), "code": "999999"})
     assert resp.status_code == 400
     assert record.attempt_count == 1
-    assert candidate.phone_verified_at is None
+    assert candidate.verified_at is None
 
 
 def test_verify_otp_rejects_expired_code(client, fake_db, candidate):
@@ -202,5 +202,5 @@ def test_request_otp_returns_debug_code_when_echo_enabled_in_production(client, 
     monkeypatch.setattr(auth_router.settings, "app_env", "production")
     monkeypatch.setattr(auth_router.settings, "otp_echo_code", True)
 
-    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "phone": "+15551234567"})
+    resp = client.post("/auth/otp/request", json={"candidate_id": str(candidate.id), "email": "jane@example.com"})
     assert resp.json()["debug_code"] == "123456"
